@@ -452,8 +452,14 @@ sys_sigreturn(struct thread *td, struct sigreturn_args *uap)
 void
 makectx(struct trapframe *tf, struct pcb *pcb)
 {
+	int i;
 
-	panic("makectx");
+	for (i = 0; i < PCB_LR; i++)
+		pcb->pcb_x[i] = tf->tf_x[i];
+
+	pcb->pcb_x[PCB_LR] = tf->tf_lr;
+	pcb->pcb_pc = tf->tf_elr;
+	pcb->pcb_sp = tf->tf_sp;
 }
 
 void

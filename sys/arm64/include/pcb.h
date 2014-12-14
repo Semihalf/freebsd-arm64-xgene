@@ -36,6 +36,7 @@ struct trapframe;
 #define	PCB_LR		30
 struct pcb {
 	uint64_t	pcb_x[31];
+	uint64_t	pcb_pc;
 	/* These two need to be in order as we access them together */
 	uint64_t	pcb_sp;
 	uint64_t	pcb_tpidr_el0;

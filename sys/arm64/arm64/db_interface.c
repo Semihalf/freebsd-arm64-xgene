@@ -34,6 +34,8 @@ __FBSDID("$FreeBSD$");
 #include <ddb/ddb.h>
 #include <ddb/db_variables.h>
 
+#include <machine/cpu.h>
+
 struct db_variable db_regs[] = {};
 struct db_variable *db_eregs = NULL;
 
@@ -42,13 +44,40 @@ db_show_mdpcpu(struct pcpu *pc)
 {
 }
 
+static int
+db_validate_address(vm_offset_t addr)
+{
+	/* XXX ARM64TODO: Revisit once pmap_extract() is implemented */
+#if 0
+	struct proc *p = curproc;
+	struct pmap *pmap;
+
+	if (!p || !p->p_vmspace || !p->p_vmspace->vm_map.pmap ||
+	    addr >= VM_MAXUSER_ADDRESS)
+		pmap = pmap_kernel();
+	else
+		pmap = p->p_vmspace->vm_map.pmap;
+
+	return (pmap_extract(pmap, addr) == FALSE);
+#endif
+	return 0;
+}
+
 /*
  * Read bytes from kernel address space for debugger.
  */
 int
 db_read_bytes(vm_offset_t addr, size_t size, char *data)
 {
+	const char *src = (const char *)addr;
 
+	while (size-- > 0) {
+		if (db_validate_address((u_int)src)) {
+			db_printf("address %p is invalid\n", src);
+			return (-1);
+		}
+		*data++ = *src++;
+	}
 	return (0);
 }
 
@@ -58,6 +87,25 @@ db_read_bytes(vm_offset_t addr, size_t size, char *data)
 int
 db_write_bytes(vm_offset_t addr, size_t size, char *data)
 {
+	char *dst;
+
+	dst = (char *)addr;
+	while (size-- > 0) {
+		if (db_validate_address((u_int)dst)) {
+			db_printf("address %p is invalid\n", dst);
+			return (-1);
+		}
+		*dst++ = *data++;
+	}
+
+	/*
+	 * XXX ARM64TODO: Revisit while we have D-cache switched on.
+	 * For now, take care of I-cache and barriers only.
+	 */
+	dsb();
+	__asm __volatile("ic ialluis" : : : "memory");
+	dsb();
+	isb();
 
 	return (0);
 }

@@ -41,6 +41,7 @@
 #ifndef MACHINE_CPU_H
 #define	MACHINE_CPU_H
 
+#include <machine/atomic.h>
 #include <machine/frame.h>
 
 #define	TRAPF_PC(tfp)		((tfp)->tf_lr)

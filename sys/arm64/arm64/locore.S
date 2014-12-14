@@ -112,6 +112,8 @@ virtdone:
 	str	x29, [x0, 16]	/* kern_delta */
 	str	x25, [x0, 24]	/* kern_stack */
 
+	/* trace back starts here */
+	mov	fp, #0
 	/* Branch to C code */
 	bl	initarm
 	bl	mi_startup

@@ -36,6 +36,10 @@ INCLUDES+= -I$S/contrib/libfdt
 # We generally don't want fpu instructions in the kernel.
 CFLAGS += -mgeneral-regs-only
 
+.if !empty(DDB_ENABLED)
+CFLAGS += -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
+.endif
+
 %BEFORE_DEPEND
 
 %OBJS

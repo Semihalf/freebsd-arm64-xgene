@@ -30,7 +30,17 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 #include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/kdb.h>
+#include <machine/pcb.h>
 #include <ddb/ddb.h>
+#include <ddb/db_sym.h>
+
+struct unwind_state {
+	uint64_t fp;
+	uint64_t sp;
+	uint64_t pc;
+};
 
 void
 db_md_list_watchpoints()
@@ -51,15 +61,86 @@ db_md_set_watchpoint(db_expr_t addr, db_expr_t size)
 	return (0);
 }
 
+static int
+db_unwind_frame(struct unwind_state *frame)
+{
+	uint64_t fp = frame->fp;
+
+	if (fp == 0)
+		return -1;
+
+	frame->sp = fp + 0x10;
+	/* FP to previous frame (X29) */
+	frame->fp = *(uint64_t *)(fp);
+	/* LR (X30) */
+	frame->pc = *(uint64_t *)(fp + 8) - 4;
+	return (0);
+}
+
+static void
+db_stack_trace_cmd(struct unwind_state *frame)
+{
+	c_db_sym_t sym;
+	const char *name;
+	db_expr_t value;
+	db_expr_t offset;
+
+	while (1) {
+		uint64_t pc = frame->pc;
+		int ret;
+
+		ret = db_unwind_frame(frame);
+		if (ret < 0)
+			break;
+
+		sym = db_search_symbol(pc, DB_STGY_ANY, &offset);
+		if (sym == C_DB_SYM_NULL) {
+			value = 0;
+			name = "(null)";
+		} else
+			db_symbol_values(sym, &name, &value);
+
+		db_printf("%s() at ", name);
+		db_printsym(frame->pc, DB_STGY_PROC);
+		db_printf("\n");
+
+		db_printf("\t pc = 0x%08lx  lr = 0x%08lx\n", pc,
+		    frame->pc);
+		db_printf("\t sp = 0x%08lx  fp = 0x%08lx\n", frame->sp,
+		    frame->fp);
+		/* TODO: Show some more registers */
+		db_printf("\n");
+	}
+}
+
 int
 db_trace_thread(struct thread *thr, int count)
 {
+	struct unwind_state frame;
+	struct pcb *ctx;
 
+	if (thr != curthread) {
+		ctx = kdb_thr_ctx(thr);
+
+		frame.sp = (uint64_t)ctx->pcb_sp;
+		frame.fp = (uint64_t)ctx->pcb_x[29];
+		frame.pc = (uint64_t)ctx->pcb_x[30];
+		db_stack_trace_cmd(&frame);
+	} else
+		db_trace_self();
 	return (0);
 }
 
 void
 db_trace_self(void)
 {
+	struct unwind_state frame;
+	uint64_t sp;
 
+	__asm __volatile("mov %0, sp" : "=&r" (sp));
+
+	frame.sp = sp;
+	frame.fp = (uint64_t)__builtin_frame_address(0);
+	frame.pc = (uint64_t)db_trace_self;
+	db_stack_trace_cmd(&frame);
 }

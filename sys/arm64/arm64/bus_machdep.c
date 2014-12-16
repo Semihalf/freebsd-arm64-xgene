@@ -89,6 +89,15 @@ generic_bs_barrier(void *t, bus_space_handle_t bsh, bus_size_t offset,
 {
 }
 
+static int
+generic_bs_subregion(void *t, bus_space_handle_t bsh, bus_size_t offset,
+    bus_size_t size, bus_space_handle_t *nbshp)
+{
+
+	*nbshp = bsh + offset;
+	return (0);
+}
+
 struct bus_space memmap_bus = {
 	/* cookie */
 	.bs_cookie = NULL,
@@ -96,7 +105,7 @@ struct bus_space memmap_bus = {
 	/* mapping/unmapping */
 	.bs_map = generic_bs_map,
 	.bs_unmap = generic_bs_unmap,
-	.bs_subregion = NULL,
+	.bs_subregion = generic_bs_subregion,
 
 	/* allocation/deallocation */
 	.bs_alloc = NULL,

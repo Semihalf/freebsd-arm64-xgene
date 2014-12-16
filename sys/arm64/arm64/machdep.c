@@ -95,6 +95,7 @@ vm_paddr_t dump_avail[PHYS_AVAIL_SIZE + 2];
 int early_boot = 1;
 int cold = 1;
 long realmem = 0;
+long Maxmem = 0;
 
 #define	PHYSMAP_SIZE	(2 * (VM_PHYSSEG_MAX - 1))
 vm_paddr_t physmap[PHYSMAP_SIZE];

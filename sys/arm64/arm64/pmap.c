@@ -144,6 +144,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 #include <machine/machdep.h>
+#include <machine/md_var.h>
 #include <machine/pcb.h>
 
 #if 0
@@ -791,7 +792,7 @@ create_pagetables(vm_paddr_t *firstaddr)
 	for (i = 0; i < ndm1g; i++) {
 		pdp_p[i] = (vm_paddr_t)i << PDPSHIFT;
 		/* Preset PG_M and PG_A because demotion expects it. */
-		pdp_p[i] |= X86_PG_RW | X86_PG_V | PG_PS | X86_PG_G |
+		/create_pdp_p[i] |= X86_PG_RW | X86_PG_V | PG_PS | X86_PG_G |
 		    X86_PG_M | X86_PG_A;
 	}
 	for (j = 0; i < ndmpdp; i++, j++) {
@@ -1086,6 +1087,13 @@ pmap_bootstrap(vm_offset_t l1pt, vm_paddr_t kernstart, vm_size_t kernlen)
 	}
 	phys_avail[avail_slot] = 0;
 	phys_avail[avail_slot + 1] = 0;
+
+	/*
+	 * Maxmem isn't the "maximum memory", it's one larger than the
+	 * highest page of the physical address space.  It should be
+	 * called something like "Maxphyspage".
+	 */
+	Maxmem = atop(phys_avail[avail_slot - 1]);
 
 	/* Flush the cache and tlb to ensure the new entries are valid */
 	/* TODO: Flush the cache, we are relying on it being off */

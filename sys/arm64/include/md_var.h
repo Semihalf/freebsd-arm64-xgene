@@ -33,10 +33,12 @@
 #ifndef	_MACHINE_MD_VAR_H_
 #define	_MACHINE_MD_VAR_H_
 
+extern long Maxmem;
 extern char sigcode[];
 extern int szsigcode;
 
 struct dumperinfo;
 int minidumpsys(struct dumperinfo *);
+void busdma_swi(void);
 
 #endif /* !_MACHINE_MD_VAR_H_ */

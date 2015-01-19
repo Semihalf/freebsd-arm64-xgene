@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <machine/bus.h>
 #include <sys/rman.h>
+#include <sys/pciio.h>
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcireg.h>
 #include "ahci.h"
@@ -379,6 +380,11 @@ ahci_pci_attach(device_t dev)
 	int	error, i;
 	uint32_t devid = pci_get_devid(dev);
 	uint8_t revid = pci_get_revid(dev);
+	struct pci_devinfo *dinfo;
+	int msi_count, msix_count;
+
+	msi_count = pci_msi_count(dev);
+	msix_count = pci_msix_count(dev);
 
 	i = 0;
 	while (ahci_ids[i].id != 0 &&
@@ -405,10 +411,35 @@ ahci_pci_attach(device_t dev)
 	if (!(ctlr->r_mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
 	    &ctlr->r_rid, RF_ACTIVE)))
 		return ENXIO;
+
+	if (msix_count > 0) {
+		/* Allocate resources for MSI-X table and PBA */
+		/* No need to check dinfo for NULL as it is allocated before by
+		 * pci during device discovery */
+		dinfo = (struct pci_devinfo *)device_get_ivars(dev);
+		ctlr->r_msix_tab_rid = dinfo->cfg.msix.msix_table_bar;
+		ctlr->r_msix_pba_rid = dinfo->cfg.msix.msix_pba_bar;
+		if (!(ctlr->r_msix_table = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
+		    &ctlr->r_msix_tab_rid, RF_ACTIVE))) {
+			ahci_free_mem(dev);
+			return ENXIO;
+		}
+
+		if (ctlr->r_msix_tab_rid != ctlr->r_msix_pba_rid) {
+			/* Separate BAR for PBA */
+			if (!(ctlr->r_msix_pba = bus_alloc_resource_any(dev,
+			    SYS_RES_MEMORY, &ctlr->r_msix_pba_rid,
+			    RF_ACTIVE))) {
+				ahci_free_mem(dev);
+				return ENXIO;
+			}
+		}
+	}
+
 	pci_enable_busmaster(dev);
 	/* Reset controller */
 	if ((error = ahci_pci_ctlr_reset(dev)) != 0) {
-		bus_release_resource(dev, SYS_RES_MEMORY, ctlr->r_rid, ctlr->r_mem);
+		ahci_free_mem(dev);
 		return (error);
 	};
 
@@ -427,22 +458,36 @@ ahci_pci_attach(device_t dev)
 	ctlr->numirqs = 1;
 	if (ctlr->msi < 0)
 		ctlr->msi = 0;
-	else if (ctlr->msi == 1)
-		ctlr->msi = min(1, pci_msi_count(dev));
+	else if (ctlr->msi == 1) {
+		if (msi_count == 0 && msix_count == 0)
+			ctlr->msi = 0;
+		else
+			ctlr->msi = 1;
+	}
 	else if (ctlr->msi > 1) {
 		ctlr->msi = 2;
-		ctlr->numirqs = pci_msi_count(dev);
+		ctlr->numirqs = (msix_count > 0) ? msix_count: msi_count;
 	}
 	/* Allocate MSI if needed/present. */
-	if (ctlr->msi && pci_alloc_msi(dev, &ctlr->numirqs) != 0) {
-		ctlr->msi = 0;
-		ctlr->numirqs = 1;
+	if (ctlr->msi > 0) {
+		error = 0;
+		if (msix_count > 0)
+			error = pci_alloc_msix(dev, &ctlr->numirqs);
+		if (msi_count > 0)
+			error = pci_alloc_msi(dev, &ctlr->numirqs);
+
+		if (error) {
+			ctlr->msi = 0;
+			ctlr->numirqs = 1;
+		}
 	}
 
 	error = ahci_attach(dev);
-	if (error != 0)
-		if (ctlr->msi)
+	if (error != 0) {
+		if (ctlr->msi > 0 && (msix_count > 0 || msi_count > 0))
 			pci_release_msi(dev);
+		ahci_free_mem(dev);
+	}
 	return error;
 }
 

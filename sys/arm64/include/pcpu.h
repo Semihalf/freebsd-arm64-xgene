@@ -43,31 +43,22 @@
 struct pcb;
 struct pcpu;
 
-extern struct pcpu *pcpup;
+static inline struct pcpu *
+get_pcpu(void)
+{
+	struct pcpu *pcpu;
 
-/* XXX: This will only work for a single cluster */
-#define	get_pcpu()			\
-({					\
-	uint64_t mpidr;			\
-					\
-	mpidr = get_mpidr();		\
-	(pcpup + CPU_AFF0(mpidr));	\
-})
+	__asm __volatile("mov	%0, x18" : "=&r"(pcpu));
+	return (pcpu);
+}
 
 static inline struct thread *
 get_curthread(void)
 {
-	void *ret;
+	struct thread *td;
 
-	__asm __volatile("mrs %0, tpidr_el1" : "=r" (ret));
-	return (ret);
-}
-
-static inline void
-set_curthread(struct thread *td)
-{
-
-	__asm __volatile("msr tpidr_el1, %0" : : "r" (td));
+	__asm __volatile("ldr	%0, [x18]" : "=&r"(td));
+	return (td);
 }
 
 #define curthread get_curthread()

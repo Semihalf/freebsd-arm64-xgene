@@ -85,7 +85,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 struct pcpu __pcpu[MAXCPU];
-struct pcpu *pcpup = &__pcpu[0];
 
 static struct trapframe proc0_tf;
 
@@ -552,6 +551,8 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 static void
 init_proc0(vm_offset_t kstack)
 {
+	struct pcpu *pcpup = &__pcpu[0];
+
 	proc_linkup0(&proc0, &thread0);
 	thread0.td_kstack = kstack;
 	thread0.td_pcb = (struct pcb *)(thread0.td_kstack) - 1;
@@ -810,6 +811,7 @@ void
 initarm(struct arm64_bootparams *abp)
 {
 	struct efi_map_header *efihdr;
+	struct pcpu *pcpup;
 	vm_offset_t lastaddr;
 	caddr_t kmdp;
 	vm_paddr_t mem_len;
@@ -850,8 +852,17 @@ initarm(struct arm64_bootparams *abp)
 	printf("Total = %lx\n", mem_len);
 
 	/* Set the pcpu data, this is needed by pmap_bootstrap */
-	set_curthread(&thread0);
+	pcpup = &__pcpu[0];
 	pcpu_init(pcpup, 0, sizeof(struct pcpu));
+
+	/*
+	 * Set the pcpu pointer with a backup in tpidr_el1 to be
+	 * loaded when entering the kernel from userland.
+	 */
+	__asm __volatile(
+	    "mov x18, %0 \n"
+	    "msr tpidr_el1, %0" :: "r"(pcpup));
+
 	PCPU_SET(curthread, &thread0);
 
 	/* Do basic tuning, hz etc */

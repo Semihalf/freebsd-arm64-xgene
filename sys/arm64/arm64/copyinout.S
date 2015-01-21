@@ -36,9 +36,9 @@ __FBSDID("$FreeBSD$");
 #include "assym.s"
 
 .macro	set_fault_handler handler, tmp
-	mrs	\tmp, tpidr_el1		/* Read curthread */
-	ldr	\tmp, [\tmp, #TD_PCB]	/* Load the pcb */
-	str	\handler, [\tmp, #PCB_ONFAULT] /* Set the handler */
+	ldr	\tmp, [x18, #PC_CURTHREAD]	/* Load curthread */
+	ldr	\tmp, [\tmp, #TD_PCB]		/* Load the pcb */
+	str	\handler, [\tmp, #PCB_ONFAULT]	/* Set the handler */
 .endm
 
 /*

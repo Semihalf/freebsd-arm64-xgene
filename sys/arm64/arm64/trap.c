@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/frame.h>
 #include <machine/pcb.h>
+#include <machine/pcpu.h>
+#include <machine/vmparam.h>
 
 #ifdef VFP
 #include <machine/vfp.h>
@@ -282,6 +284,11 @@ do_el0_sync(struct trapframe *frame)
 {
 	uint32_t exception;
 	uint64_t esr;
+
+	/* Check we have a sane environment when entering from userland */
+	KASSERT((uintptr_t)get_pcpu() >= VM_MIN_KERNEL_ADDRESS,
+	    ("Invalid pcpu address from userland: %p (tpidr %lx)",
+	     get_pcpu(), READ_SPECIALREG(tpidr_el1)));
 
 	esr = READ_SPECIALREG(esr_el1);
 	exception = ESR_ELx_EXCEPTION(esr);

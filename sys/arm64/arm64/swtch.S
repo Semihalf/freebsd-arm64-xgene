@@ -35,10 +35,6 @@
 
 __FBSDID("$FreeBSD$");
 
-.Lcurpcpu:
-	.quad	_C_LABEL(__pcpu)
-	.quad	PCPU_SIZE
-
 /*
  * void cpu_throw(struct thread *old, struct thread *new)
  */
@@ -54,16 +50,11 @@ ENTRY(cpu_throw)
 	mov	x1, x19
 #endif
 
-	/* Load the PCPU area */
-	/* TODO: Adjust for the core we are on */
-	ldr	x3, .Lcurpcpu
-
 	/* Store the new curthread */
-	str	x1, [x3, #PC_CURTHREAD]
-	msr	tpidr_el1, x1
+	str	x1, [x18, #PC_CURTHREAD]
 	/* And the new pcb */
 	ldr	x4, [x1, #TD_PCB]
-	str	x4, [x3, #PC_CURPCB]
+	str	x4, [x18, #PC_CURPCB]
 
 	/*
 	 * TODO: We may need to flush the cache here.
@@ -89,7 +80,7 @@ ENTRY(cpu_throw)
 	ldp	x12, x13, [x4, #PCB_REGS + 12 * 8]
 	ldp	x14, x15, [x4, #PCB_REGS + 14 * 8]
 	ldp	x16, x17, [x4, #PCB_REGS + 16 * 8]
-	ldp	x18, x19, [x4, #PCB_REGS + 18 * 8]
+	ldr	     x19, [x4, #PCB_REGS + 19 * 8]
 	ldp	x20, x21, [x4, #PCB_REGS + 20 * 8]
 	ldp	x22, x23, [x4, #PCB_REGS + 22 * 8]
 	ldp	x24, x25, [x4, #PCB_REGS + 24 * 8]
@@ -113,16 +104,11 @@ ENTRY(cpu_switch)
 #error cpu_switch needs to be ported to support SMP
 #endif
 
-	/* Load the PCPU area */
-	/* TODO: Adjust for the core we are on */
-	ldr	x3, .Lcurpcpu
-
 	/* Store the new curthread */
-	str	x1, [x3, #PC_CURTHREAD]
-	msr	tpidr_el1, x1
+	str	x1, [x18, #PC_CURTHREAD]
 	/* And the new pcb */
 	ldr	x4, [x1, #TD_PCB]
-	str	x4, [x3, #PC_CURPCB]
+	str	x4, [x18, #PC_CURPCB]
 
 	/*
 	 * Save the old context.
@@ -193,7 +179,7 @@ ENTRY(cpu_switch)
 	ldp	x12, x13, [x4, #PCB_REGS + 12 * 8]
 	ldp	x14, x15, [x4, #PCB_REGS + 14 * 8]
 	ldp	x16, x17, [x4, #PCB_REGS + 16 * 8]
-	ldp	x18, x19, [x4, #PCB_REGS + 18 * 8]
+	ldr	     x19, [x4, #PCB_REGS + 19 * 8]
 	ldp	x20, x21, [x4, #PCB_REGS + 20 * 8]
 	ldp	x22, x23, [x4, #PCB_REGS + 22 * 8]
 	ldp	x24, x25, [x4, #PCB_REGS + 24 * 8]
@@ -228,7 +214,7 @@ ENTRY(fork_trampoline)
 	ldp	x12, x13, [sp, #TF_X + 12 * 8]
 	ldp	x14, x15, [sp, #TF_X + 14 * 8]
 	ldp	x16, x17, [sp, #TF_X + 16 * 8]
-	ldp	x18, x19, [sp, #TF_X + 18 * 8]
+	ldr	     x19, [sp, #TF_X + 19 * 8]
 	ldp	x20, x21, [sp, #TF_X + 20 * 8]
 	ldp	x22, x23, [sp, #TF_X + 22 * 8]
 	ldp	x24, x25, [sp, #TF_X + 24 * 8]
@@ -249,6 +235,7 @@ ENTRY(fork_trampoline)
 
 	/* Finally x0 and x1 */
 	ldp	x0, x1, [sp, #TF_X + 0 * 8]
+	ldr	x18, [sp, #TF_X + 18 * 8]
 
 	/*
 	 * No need for interrupts reenabling since PSR

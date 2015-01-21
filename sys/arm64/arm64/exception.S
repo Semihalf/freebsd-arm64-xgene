@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 .endif
 	stp	x10, x11, [sp, #-16]!
 	stp	x12, lr, [sp, #-16]!
+	mrs	x18, tpidr_el1
 .endm
 
 .macro	restore_registers el
@@ -78,7 +79,11 @@ __FBSDID("$FreeBSD$");
 	ldp	x12, x13, [sp], #16
 	ldp	x14, x15, [sp], #16
 	ldp	x16, x17, [sp], #16
+.if \el == 0
 	ldp	x18, x19, [sp], #16
+.else
+	ldp	xzr, x19, [sp], #16
+.endif
 	ldp	x20, x21, [sp], #16
 	ldp	x22, x23, [sp], #16
 	ldp	x24, x25, [sp], #16
@@ -92,7 +97,7 @@ __FBSDID("$FreeBSD$");
 	msr	daifset, #2
 
 	/* Read the current thread flags */
-1:	mrs	x1, tpidr_el1
+1:	ldr	x1, [x18, #PC_CURTHREAD]	/* Load curthread */
 	ldr	x2, [x1, #TD_FLAGS]! /* TODO: No need for the ! but clang fails without it */
 
 	/* Check if we have either bits set */

@@ -263,6 +263,7 @@ do_el1h_sync(struct trapframe *frame)
 		break;
 	case EXCP_BRK:
 	case EXCP_WATCHPT_EL1:
+	case EXCP_SOFTSTP_EL1:
 #ifdef KDB
 		kdb_trap(exception, 0, frame);
 #else

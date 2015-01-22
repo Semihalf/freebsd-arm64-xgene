@@ -168,6 +168,44 @@ dbg_wb_write_reg(int reg, int n, uint64_t val)
 	isb();
 }
 
+void
+kdb_cpu_set_singlestep(void)
+{
+
+	kdb_frame->tf_spsr |= DBG_SPSR_SS;
+	WRITE_SPECIALREG(MDSCR_EL1, READ_SPECIALREG(MDSCR_EL1) |
+	    DBG_MDSCR_SS | DBG_MDSCR_KDE);
+
+	/*
+	 * Disable breakpoints and watchpoints, e.g. stepping
+	 * over watched instruction will trigger break exception instead of
+	 * single-step exception and locks CPU on that instruction for ever.
+	 */
+	if (dbg_ref_count_mde[PCPU_GET(cpuid)] > 0) {
+		WRITE_SPECIALREG(MDSCR_EL1,
+		    READ_SPECIALREG(MDSCR_EL1) & ~DBG_MDSCR_MDE);
+	}
+}
+
+void
+kdb_cpu_clear_singlestep(void)
+{
+
+	WRITE_SPECIALREG(MDSCR_EL1, READ_SPECIALREG(MDSCR_EL1) &
+	    ~(DBG_MDSCR_SS | DBG_MDSCR_KDE));
+
+	/* Restore breakpoints and watchpoints */
+	if (dbg_ref_count_mde[PCPU_GET(cpuid)] > 0) {
+		WRITE_SPECIALREG(MDSCR_EL1,
+		    READ_SPECIALREG(MDSCR_EL1) | DBG_MDSCR_MDE);
+	}
+
+	if (dbg_ref_count_kde[PCPU_GET(cpuid)] > 0) {
+		WRITE_SPECIALREG(MDSCR_EL1,
+		    READ_SPECIALREG(MDSCR_EL1) | DBG_MDSCR_KDE);
+	}
+}
+
 static const char *
 dbg_watchtype_str(uint32_t type)
 {

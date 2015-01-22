@@ -50,7 +50,8 @@ typedef long		db_expr_t;
 	kdb_frame->tf_elr += BKPT_SIZE; \
 } while (0)
 
-#define SOFTWARE_SSTEP	1
+#define db_clear_single_step	kdb_cpu_clear_singlestep
+#define db_set_single_step	kdb_cpu_set_singlestep
 
 #define	IS_BREAKPOINT_TRAP(type, code)	(type == T_BREAKPOINT)
 #define	IS_WATCHPOINT_TRAP(type, code)	(type == T_WATCHPOINT)
@@ -58,7 +59,8 @@ typedef long		db_expr_t;
 #define	inst_trap_return(ins)	(0)
 /* ret */
 #define	inst_return(ins)	(((ins) & 0xfffffc1fu) == 0xd65f0000)
-#define	inst_call(ins)		(0)
+#define	inst_call(ins)		(((ins) & 0xfc000000u) == 0x94000000u || /* BL */ \
+				 ((ins) & 0xfffffc1fu) == 0xd63f0000u) /* BLR */
 /* b, b.cond, br. TODO: b.cond & br */
 #define	inst_branch(ins)	(((ins) & 0xfc000000u) == 0x14000000u)
 #define	inst_load(ins)		(0)

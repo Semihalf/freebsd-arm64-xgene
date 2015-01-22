@@ -89,6 +89,7 @@
 #define	 EXCP_SP_ALIGN		0x26	/* SP slignment fault */
 #define	 EXCP_TRAP_FP		0x2c	/* Trapped FP exception */
 #define	 EXCP_SERROR		0x2f	/* SError interrupt */
+#define	 EXCP_SOFTSTP_EL1	0x33	/* Software Step, from same EL */
 #define	 EXCP_WATCHPT_EL1	0x35	/* Watchpoint, from same EL */
 #define	 EXCP_BRK		0x3c	/* Breakpoint */
 
@@ -178,7 +179,11 @@
 #define	TCR_T0SZ_SHIFT	0
 #define	TCR_TxSZ(x)	(((x) << TCR_T1SZ_SHIFT) | ((x) << TCR_T0SZ_SHIFT))
 
+/* Saved Program Status Register */
+#define DBG_SPSR_SS	(0x1 << 21)
+
 /* Monitor Debug System Control Register */
+#define DBG_MDSCR_SS	(0x1 << 0)
 #define DBG_MDSCR_KDE	(0x1 << 13)
 #define DBG_MDSCR_MDE	(0x1 << 15)
 

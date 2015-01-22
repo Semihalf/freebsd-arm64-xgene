@@ -262,9 +262,9 @@ do_el1h_sync(struct trapframe *frame)
 		data_abort(frame, esr, 0);
 		break;
 	case EXCP_BRK:
-		printf("Breakpoint %x\n", (uint32_t)(esr & ESR_ELx_ISS_MASK));
+	case EXCP_WATCHPT_EL1:
 #ifdef KDB
-		kdb_trap(T_BREAKPOINT, 0, frame);
+		kdb_trap(exception, 0, frame);
 #else
 		panic("No debugger in kernel.\n");
 #endif

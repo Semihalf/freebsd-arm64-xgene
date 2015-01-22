@@ -1,6 +1,9 @@
 /*-
- * Copyright (c) 2014 Andrew Turner
+ * Copyright (c) 2014 The FreeBSD Foundation
  * All rights reserved.
+ *
+ * This software was developed by Semihalf under
+ * the sponsorship of the FreeBSD Foundation.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -14,7 +17,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -22,91 +25,37 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
-#ifndef _MACHINE_CPUFUNC_H_
-#define	_MACHINE_CPUFUNC_H_
+#ifndef _MACHINE_DEBUG_MONITOR_H_
+#define _MACHINE_DEBUG_MONITOR_H_
 
-#ifdef _KERNEL
+#ifdef KDB
 
-#include <machine/armreg.h>
+#include <machine/db_machdep.h>
 
+enum dbg_el_t {
+	DBG_FROM_EL0 = 0,
+	DBG_FROM_EL1 = 1,
+};
+
+enum dbg_access_t {
+	HW_BREAKPOINT_X		= 0,
+	HW_BREAKPOINT_R		= 1,
+	HW_BREAKPOINT_W		= 2,
+	HW_BREAKPOINT_RW	= HW_BREAKPOINT_R | HW_BREAKPOINT_W,
+};
+
+void dbg_monitor_init(void);
+void dbg_show_watchpoint(void);
+int dbg_setup_watchpoint(db_expr_t addr, db_expr_t size, enum dbg_el_t el,
+    enum dbg_access_t access);
+int dbg_remove_watchpoint(db_expr_t addr, db_expr_t size, enum dbg_el_t el);
+#else
 static __inline void
-breakpoint(void)
+dbg_monitor_init(void)
 {
-
-	__asm("brk #0");
 }
+#endif
 
-static __inline register_t
-dbg_disable(void)
-{
-	uint32_t ret;
-
-	__asm __volatile(
-	    "mrs %x0, daif   \n"
-	    "msr daifset, #8 \n"
-	    : "=&r" (ret));
-
-	return (ret);
-}
-
-static __inline void
-dbg_enable(void)
-{
-
-	__asm __volatile("msr daifclr, #8");
-}
-
-static __inline register_t
-intr_disable(void)
-{
-	/* DAIF is a 32-bit register */
-	uint32_t ret;
-
-	__asm __volatile(
-	    "mrs %x0, daif   \n"
-	    "msr daifset, #2 \n"
-	    : "=&r" (ret));
-
-	return (ret);
-}
-
-static __inline void
-intr_restore(register_t s)
-{
-
-	WRITE_SPECIALREG(daif, s);
-}
-
-static __inline void
-intr_enable(void)
-{
-
-	__asm __volatile("msr daifclr, #2");
-}
-
-static __inline register_t
-get_midr(void)
-{
-	uint64_t midr;
-
-	midr = READ_SPECIALREG(midr_el1);
-
-	return (midr);
-}
-
-static __inline register_t
-get_mpidr(void)
-{
-	uint64_t mpidr;
-
-	mpidr = READ_SPECIALREG(mpidr_el1);
-
-	return (mpidr);
-}
-
-#endif	/* _KERNEL */
-#endif	/* _MACHINE_CPUFUNC_H_ */
+#endif /* _MACHINE_DEBUG_MONITOR_H_ */

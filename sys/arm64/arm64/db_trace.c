@@ -36,6 +36,9 @@ __FBSDID("$FreeBSD$");
 #include <ddb/ddb.h>
 #include <ddb/db_sym.h>
 
+#include <machine/armreg.h>
+#include <machine/debug_monitor.h>
+
 struct unwind_state {
 	uint64_t fp;
 	uint64_t sp;
@@ -45,20 +48,23 @@ struct unwind_state {
 void
 db_md_list_watchpoints()
 {
+
+	dbg_show_watchpoint();
 }
 
 int
 db_md_clr_watchpoint(db_expr_t addr, db_expr_t size)
 {
 
-	return (0);
+	return (dbg_remove_watchpoint(addr, size, DBG_FROM_EL1));
 }
 
 int
 db_md_set_watchpoint(db_expr_t addr, db_expr_t size)
 {
 
-	return (0);
+	return (dbg_setup_watchpoint(addr, size, DBG_FROM_EL1,
+	    HW_BREAKPOINT_RW));
 }
 
 static int

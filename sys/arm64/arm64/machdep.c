@@ -64,7 +64,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 #include <vm/vm_pager.h>
 
+#include <machine/armreg.h>
 #include <machine/cpu.h>
+#include <machine/debug_monitor.h>
+#include <machine/kdb.h>
 #include <machine/devmap.h>
 #include <machine/machdep.h>
 #include <machine/metadata.h>
@@ -831,6 +834,8 @@ initarm(struct arm64_bootparams *abp)
 	msgbufinit(msgbufp, msgbufsize);
 	mutex_init();
 	init_param2(physmem);
+
+	dbg_monitor_init();
 	kdb_init();
 
 	early_boot = 0;

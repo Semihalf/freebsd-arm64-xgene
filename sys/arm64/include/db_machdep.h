@@ -30,11 +30,12 @@
 #ifndef	_MACHINE_DB_MACHDEP_H_
 #define	_MACHINE_DB_MACHDEP_H_
 
+#include <machine/armreg.h>
 #include <machine/frame.h>
 #include <machine/trap.h>
 
-#define T_BREAKPOINT	(1)
-#define T_WATCHPOINT	(2)
+#define T_BREAKPOINT	(EXCP_BRK)
+#define T_WATCHPOINT	(EXCP_WATCHPT_EL1)
 
 typedef vm_offset_t	db_addr_t;
 typedef long		db_expr_t;

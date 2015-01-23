@@ -63,8 +63,57 @@ typedef long		db_expr_t;
 				 ((ins) & 0xfffffc1fu) == 0xd63f0000u) /* BLR */
 /* b, b.cond, br. TODO: b.cond & br */
 #define	inst_branch(ins)	(((ins) & 0xfc000000u) == 0x14000000u)
-#define	inst_load(ins)		(0)
-#define	inst_store(ins)		(0)
+
+#define inst_load(ins) ({							\
+	uint32_t tmp_instr = db_get_value(PC_REGS(), sizeof(uint32_t), FALSE);	\
+	is_load_instr(tmp_instr);						\
+})
+
+#define inst_store(ins) ({							\
+	uint32_t tmp_instr = db_get_value(PC_REGS(), sizeof(uint32_t), FALSE);	\
+	is_store_instr(tmp_instr);						\
+})
+
+#define	is_load_instr(ins)	((((ins) & 0x3b000000u) == 0x18000000u) || /* literal */ \
+				 (((ins) & 0x3f400000u) == 0x08400000u) ||  /* exclusive */ \
+				 (((ins) & 0x3bc00000u) == 0x28400000u) || /* no-allocate pair */ \
+				 ((((ins) & 0x3b200c00u) == 0x38000400u) && \
+				  (((ins) & 0x3be00c00u) != 0x38000400u) && \
+				  (((ins) & 0xffe00c00u) != 0x3c800400u)) || /* immediate post-indexed */ \
+				 ((((ins) & 0x3b200c00u) == 0x38000c00u) && \
+				  (((ins) & 0x3be00c00u) != 0x38000c00u) && \
+				  (((ins) & 0xffe00c00u) != 0x3c800c00u)) || /* immediate pre-indexed */ \
+				 ((((ins) & 0x3b200c00u) == 0x38200800u) && \
+				  (((ins) & 0x3be00c00u) != 0x38200800u) && \
+				  (((ins) & 0xffe00c00u) != 0x3ca00c80u)) || /* register offset */ \
+				 ((((ins) & 0x3b200c00u) == 0x38000800u) && \
+				  (((ins) & 0x3be00c00u) != 0x38000800u)) || /* unprivileged */ \
+				 ((((ins) & 0x3b200c00u) == 0x38000000u) && \
+				  (((ins) & 0x3be00c00u) != 0x38000000u) && \
+				  (((ins) & 0xffe00c00u) != 0x3c800000u)) ||  /* unscaled immediate */ \
+				 ((((ins) & 0x3b000000u) == 0x39000000u) && \
+				  (((ins) & 0x3bc00000u) != 0x39000000u) && \
+				  (((ins) & 0xffc00000u) != 0x3d800000u)) &&  /* unsigned immediate */ \
+				 (((ins) & 0x3bc00000u) == 0x28400000u) || /* pair (offset) */ \
+				 (((ins) & 0x3bc00000u) == 0x28c00000u) || /* pair (post-indexed) */ \
+				 (((ins) & 0x3bc00000u) == 0x29800000u)) /* pair (pre-indexed) */
+
+#define	is_store_instr(ins)	((((ins) & 0x3f400000u) == 0x08000000u) || /* exclusive */ \
+				 (((ins) & 0x3bc00000u) == 0x28000000u) || /* no-allocate pair */ \
+				 ((((ins) & 0x3be00c00u) == 0x38000400u) || \
+				  (((ins) & 0xffe00c00u) == 0x3c800400u)) || /* immediate post-indexed */ \
+				 ((((ins) & 0x3be00c00u) == 0x38000c00u) || \
+				  (((ins) & 0xffe00c00u) == 0x3c800c00u)) || /* immediate pre-indexed */ \
+				 ((((ins) & 0x3be00c00u) == 0x38200800u) || \
+				  (((ins) & 0xffe00c00u) == 0x3ca00800u)) || /* register offset */ \
+				 (((ins) & 0x3be00c00u) == 0x38000800u) ||  /* unprivileged */ \
+				 ((((ins) & 0x3be00c00u) == 0x38000000u) || \
+				  (((ins) & 0xffe00c00u) == 0x3c800000u)) ||  /* unscaled immediate */ \
+				 ((((ins) & 0x3bc00000u) == 0x39000000u) || \
+				  (((ins) & 0xffc00000u) == 0x3d800000u)) ||  /* unsigned immediate */ \
+				 (((ins) & 0x3bc00000u) == 0x28000000u) || /* pair (offset) */ \
+				 (((ins) & 0x3bc00000u) == 0x28800000u) || /* pair (post-indexed) */ \
+				 (((ins) & 0x3bc00000u) == 0x29800000u)) /* pair (pre-indexed) */
 
 #define next_instr_address(pc, bd)	((bd) ? (pc) : ((pc) + 4))
 

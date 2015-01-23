@@ -61,8 +61,6 @@ typedef long		db_expr_t;
 #define	inst_return(ins)	(((ins) & 0xfffffc1fu) == 0xd65f0000)
 #define	inst_call(ins)		(((ins) & 0xfc000000u) == 0x94000000u || /* BL */ \
 				 ((ins) & 0xfffffc1fu) == 0xd63f0000u) /* BLR */
-/* b, b.cond, br. TODO: b.cond & br */
-#define	inst_branch(ins)	(((ins) & 0xfc000000u) == 0x14000000u)
 
 #define inst_load(ins) ({							\
 	uint32_t tmp_instr = db_get_value(PC_REGS(), sizeof(uint32_t), FALSE);	\
@@ -121,7 +119,5 @@ typedef long		db_expr_t;
 #define	DB_SMALL_VALUE_MIN	(-0x40001)
 
 #define	DB_ELFSIZE		64
-
-u_int branch_taken (u_int insn, u_int pc);
 
 #endif /* !_MACHINE_DB_MACHDEP_H_ */

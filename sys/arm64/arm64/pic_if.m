@@ -136,3 +136,22 @@ METHOD void ipi_send {
 	cpuset_t	cpus;
 	u_int		ipi;
 };
+
+METHOD int alloc_msix {
+	device_t	dev;
+	uint16_t	deviceid;
+	int		*irq;
+};
+
+METHOD int map_msi {
+	device_t	dev;
+	int		irq;
+	uint16_t	deviceid;
+	uint64_t	*addr;
+	uint32_t	*data;
+};
+
+METHOD int release_msix {
+	device_t	dev;
+	int		irq;
+};

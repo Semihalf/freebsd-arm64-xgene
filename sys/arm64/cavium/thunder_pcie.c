@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/endian.h>
+#include <sys/cpuset.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
@@ -52,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/fdt/fdt_common.h>
 
 #include "pcib_if.h"
+#include "pic_if.h"
 
 /* Assembling ECAM Configuration Address */
 #define PCIE_BUS_SHIFT	20
@@ -67,6 +69,11 @@ __FBSDID("$FreeBSD$");
 	(((slot) & PCIE_SLOT_MASK) << PCIE_SLOT_SHIFT)	|	\
 	(((func) & PCIE_FUNC_MASK) << PCIE_FUNC_SHIFT)	|	\
 	((reg) & PCIE_REG_MASK))
+
+#define GIC_DEVICEID(bus, slot, func)		\
+	((((bus) & PCIE_BUS_MASK) << 8)	  |	\
+	(((slot) & PCIE_SLOT_MASK) << 3)  |	\
+	((func) & PCIE_FUNC_MASK))
 
 #define ECAM_COUNT		4
 #define MAX_RANGES_TUPLES	3
@@ -110,6 +117,10 @@ static struct resource *thunder_pcie_alloc_resource(device_t dev,
 static int thunder_pcie_release_resource(device_t dev, device_t child,
     int type, int rid, struct resource *res);
 static int thunder_pcie_get_ecam_domain(device_t dev, int *domain);
+static int thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
+    uint64_t *addr, uint32_t *data);
+static int thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq);
+static int thunder_pcie_release_msix(device_t pcib, device_t child, int irq);
 
 static int
 thunder_pcie_probe(device_t dev)
@@ -461,6 +472,43 @@ thunder_pcie_get_ecam_domain(device_t dev, int *domain)
 	return (0);
 }
 
+static int
+thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
+    uint64_t *addr, uint32_t *data)
+{
+	uint16_t devid;
+	int error;
+
+	error = 0;
+	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
+	    pci_get_function(child));
+	error = PIC_MAP_MSI(child, irq, devid, addr, data);
+	return (error);
+}
+
+static int
+thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
+{
+	uint16_t devid;
+	int error;
+
+	error = 0;
+	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
+	    pci_get_function(child));
+	error = PIC_ALLOC_MSIX(child, devid, irq);
+	return (error);
+}
+
+static int
+thunder_pcie_release_msix(device_t pcib, device_t child, int irq)
+{
+	int error;
+
+	error = 0;
+	error = PIC_RELEASE_MSIX(child, irq);
+	return (error);
+}
+
 static device_method_t thunder_pcie_methods[] = {
 	DEVMETHOD(device_probe,			thunder_pcie_probe),
 	DEVMETHOD(device_attach,		thunder_pcie_attach),
@@ -473,6 +521,11 @@ static device_method_t thunder_pcie_methods[] = {
 	DEVMETHOD(bus_release_resource,		thunder_pcie_release_resource),
 	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+	DEVMETHOD(pcib_map_msi,			thunder_pcie_map_msi),
+	DEVMETHOD(pcib_alloc_msix,		thunder_pcie_alloc_msix),
+	DEVMETHOD(pcib_release_msix,		thunder_pcie_release_msix),
 
 	DEVMETHOD_END
 };

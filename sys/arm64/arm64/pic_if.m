@@ -137,18 +137,39 @@ METHOD void ipi_send {
 	u_int		ipi;
 };
 
+METHOD int alloc_msi {
+	device_t	dev;
+	uint16_t	devid;
+	int		count;
+	int		*irqs;
+};
+
 METHOD int alloc_msix {
 	device_t	dev;
-	uint16_t	deviceid;
+	uint16_t	devid;
 	int		*irq;
 };
 
 METHOD int map_msi {
 	device_t	dev;
 	int		irq;
-	uint16_t	deviceid;
+	uint16_t	devid;
 	uint64_t	*addr;
 	uint32_t	*data;
+};
+
+METHOD int map_msix {
+	device_t	dev;
+	int		irq;
+	uint16_t	devid;
+	uint64_t	*addr;
+	uint32_t	*data;
+};
+
+METHOD int release_msi {
+	device_t	dev;
+	int		count;
+	int		*irqs;
 };
 
 METHOD int release_msix {

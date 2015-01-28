@@ -191,7 +191,7 @@ arm_register_pic(device_t dev, u_int nirq)
 	KASSERT(root_pic == NULL, ("Unable to set the pic twice"));
 	KASSERT(nirq <= NIRQS, ("PIC is trying to handle too many IRQs"));
 
-	arm64_nintrs = nirq;
+	arm64_nintrs = NIRQS; /* Number of IRQs limited only by array size */
 	root_pic = dev;
 }
 
@@ -264,9 +264,8 @@ arm_setup_intr(const char *name, driver_filter_t *filt, driver_intr_t handler,
 	 * Watch out for interrupts' numbers.
 	 * If this is a system boot then don't allow to overfill interrupts
 	 * table (the interrupts will be deconfigured in arm_enable_intr()).
-	 * When PIC is registered just rely on arm64_nintrs variable.
 	 */
-	if ((irq >= NIRQS) || (root_pic && irq >= arm64_nintrs))
+	if (irq >= NIRQS)
 		return (EINVAL);
 
 	intr = intr_acquire(irq);

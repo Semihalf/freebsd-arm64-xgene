@@ -34,7 +34,14 @@ void	arm_cpu_intr(struct trapframe *);
 void	arm_dispatch_intr(u_int, struct trapframe *);
 int	arm_enable_intr(void);
 void	arm_mask_irq(u_int);
-void	arm_register_pic(device_t, u_int);
+void	arm_register_root_pic(device_t, u_int);
+void	arm_register_msi_pic(device_t);
+int	arm_alloc_msi(uint16_t, int, int *);
+int	arm_release_msi(int, int *);
+int	arm_alloc_msix(uint16_t, int *);
+int	arm_release_msix(int);
+int	arm_map_msi(int, uint16_t, uint64_t *, uint32_t *);
+int	arm_map_msix(int, uint16_t, uint64_t *, uint32_t *);
 int	arm_setup_intr(const char *, driver_filter_t *, driver_intr_t,
 				void *, u_int, enum intr_type, void **);
 int	arm_teardown_intr(void *);

@@ -195,7 +195,7 @@ gic_v3_attach(device_t dev)
 	 * Full success.
 	 * Now register PIC to the interrupts handling layer.
 	 */
-	arm_register_pic(dev, sc->gic_nirqs);
+	arm_register_root_pic(dev, sc->gic_nirqs);
 
 error:
 	return (err);

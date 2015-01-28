@@ -50,10 +50,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/bus.h>
 #include <machine/fdt.h>
+#include <machine/intr.h>
 #include <dev/fdt/fdt_common.h>
 
 #include "pcib_if.h"
-#include "pic_if.h"
 
 /* Assembling ECAM Configuration Address */
 #define PCIE_BUS_SHIFT	20
@@ -482,7 +482,7 @@ thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
 	error = 0;
 	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
 	    pci_get_function(child));
-	error = PIC_MAP_MSI(child, irq, devid, addr, data);
+	error = arm_map_msix(irq, devid, addr, data);
 	return (error);
 }
 
@@ -495,7 +495,7 @@ thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
 	error = 0;
 	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
 	    pci_get_function(child));
-	error = PIC_ALLOC_MSIX(child, devid, irq);
+	error = arm_alloc_msix(devid, irq);
 	return (error);
 }
 
@@ -505,7 +505,7 @@ thunder_pcie_release_msix(device_t pcib, device_t child, int irq)
 	int error;
 
 	error = 0;
-	error = PIC_RELEASE_MSIX(child, irq);
+	error = arm_release_msix(irq);
 	return (error);
 }
 

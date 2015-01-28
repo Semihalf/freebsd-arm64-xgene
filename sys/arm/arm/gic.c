@@ -281,7 +281,7 @@ arm_gic_attach(device_t dev)
 	sc->nirqs = gic_d_read_4(sc, GICD_TYPER);
 	sc->nirqs = 32 * ((sc->nirqs & 0x1f) + 1);
 
-	arm_register_pic(dev, sc->nirqs);
+	arm_register_root_pic(dev, sc->nirqs);
 
 	icciidr = gic_c_read_4(sc, GICC_IIDR);
 	device_printf(dev,"pn 0x%x, arch 0x%x, rev 0x%x, implementer 0x%x irqs %u\n",

@@ -94,6 +94,7 @@ static u_int arm64_nintrs;	/* Max interrupts number of the root PIC */
 static u_int arm64_nstray;	/* Number of received stray interrupts */
 static device_t root_pic;	/* PIC device for all incoming interrupts */
 static struct mtx intr_table_lock;
+static device_t msi_pic;	/* Device which handles MSI/MSI-X interrupts */
 
 static void
 intr_init(void *dummy __unused)
@@ -185,7 +186,7 @@ intr_post_filter(void *arg)
  * is not 100% safe.
  */
 void
-arm_register_pic(device_t dev, u_int nirq)
+arm_register_root_pic(device_t dev, u_int nirq)
 {
 
 	KASSERT(root_pic == NULL, ("Unable to set the pic twice"));
@@ -193,6 +194,58 @@ arm_register_pic(device_t dev, u_int nirq)
 
 	arm64_nintrs = NIRQS; /* Number of IRQs limited only by array size */
 	root_pic = dev;
+}
+
+/* Register device which allocates MSI interrupts */
+void
+arm_register_msi_pic(device_t dev)
+{
+
+	KASSERT(msi_pic == NULL, ("Unable to set msi_pic twice"));
+	msi_pic = dev;
+}
+
+int
+arm_alloc_msi(uint16_t devid, int count, int *irqs)
+{
+
+	return PIC_ALLOC_MSI(msi_pic, devid, count, irqs);
+}
+
+int
+arm_release_msi(int count, int *irqs)
+{
+
+	return PIC_RELEASE_MSI(msi_pic, count, irqs);
+}
+
+int
+arm_map_msi(int irq, uint16_t devid, uint64_t *addr, uint32_t *data)
+{
+
+	return PIC_MAP_MSI(msi_pic, irq, devid, addr, data);
+}
+
+int
+arm_alloc_msix(uint16_t devid, int *irq)
+{
+
+	return PIC_ALLOC_MSIX(msi_pic, devid, irq);
+}
+
+int
+arm_release_msix(int irq)
+{
+
+	return PIC_RELEASE_MSIX(msi_pic, irq);
+}
+
+
+int
+arm_map_msix(int irq, uint16_t devid, uint64_t *addr, uint32_t *data)
+{
+
+	return PIC_MAP_MSIX(msi_pic, irq, devid, addr, data);
 }
 
 /*

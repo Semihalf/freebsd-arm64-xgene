@@ -216,46 +216,46 @@ arm_register_msi_pic(device_t dev)
 }
 
 int
-arm_alloc_msi(uint16_t devid, int count, int *irqs)
+arm_alloc_msi(device_t pci_dev, int count, int *irqs)
 {
 
-	return PIC_ALLOC_MSI(msi_pic, devid, count, irqs);
+	return PIC_ALLOC_MSI(msi_pic, pci_dev, count, irqs);
 }
 
 int
-arm_release_msi(int count, int *irqs)
+arm_release_msi(device_t pci_dev, int count, int *irqs)
 {
 
-	return PIC_RELEASE_MSI(msi_pic, count, irqs);
+	return PIC_RELEASE_MSI(msi_pic, pci_dev, count, irqs);
 }
 
 int
-arm_map_msi(int irq, uint16_t devid, uint64_t *addr, uint32_t *data)
+arm_map_msi(device_t pci_dev, int irq, uint64_t *addr, uint32_t *data)
 {
 
-	return PIC_MAP_MSI(msi_pic, irq, devid, addr, data);
+	return PIC_MAP_MSI(msi_pic, pci_dev, irq, addr, data);
 }
 
 int
-arm_alloc_msix(uint16_t devid, int *irq)
+arm_alloc_msix(device_t pci_dev, int *irq)
 {
 
-	return PIC_ALLOC_MSIX(msi_pic, devid, irq);
+	return PIC_ALLOC_MSIX(msi_pic, pci_dev, irq);
 }
 
 int
-arm_release_msix(int irq)
+arm_release_msix(device_t pci_dev, int irq)
 {
 
-	return PIC_RELEASE_MSIX(msi_pic, irq);
+	return PIC_RELEASE_MSIX(msi_pic, pci_dev, irq);
 }
 
 
 int
-arm_map_msix(int irq, uint16_t devid, uint64_t *addr, uint32_t *data)
+arm_map_msix(device_t pci_dev, int irq, uint64_t *addr, uint32_t *data)
 {
 
-	return PIC_MAP_MSIX(msi_pic, irq, devid, addr, data);
+	return PIC_MAP_MSIX(msi_pic, pci_dev, irq, addr, data);
 }
 
 /*

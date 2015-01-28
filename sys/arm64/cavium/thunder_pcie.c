@@ -70,11 +70,6 @@ __FBSDID("$FreeBSD$");
 	(((func) & PCIE_FUNC_MASK) << PCIE_FUNC_SHIFT)	|	\
 	((reg) & PCIE_REG_MASK))
 
-#define GIC_DEVICEID(bus, slot, func)		\
-	((((bus) & PCIE_BUS_MASK) << 8)	  |	\
-	(((slot) & PCIE_SLOT_MASK) << 3)  |	\
-	((func) & PCIE_FUNC_MASK))
-
 #define ECAM_COUNT		4
 #define MAX_RANGES_TUPLES	3
 #define MIN_RANGES_TUPLES	2
@@ -476,26 +471,20 @@ static int
 thunder_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data)
 {
-	uint16_t devid;
 	int error;
 
 	error = 0;
-	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
-	    pci_get_function(child));
-	error = arm_map_msix(irq, devid, addr, data);
+	error = arm_map_msix(child, irq, addr, data);
 	return (error);
 }
 
 static int
 thunder_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
 {
-	uint16_t devid;
 	int error;
 
 	error = 0;
-	devid = GIC_DEVICEID(pci_get_bus(child), pci_get_slot(child),
-	    pci_get_function(child));
-	error = arm_alloc_msix(devid, irq);
+	error = arm_alloc_msix(child, irq);
 	return (error);
 }
 
@@ -505,7 +494,7 @@ thunder_pcie_release_msix(device_t pcib, device_t child, int irq)
 	int error;
 
 	error = 0;
-	error = arm_release_msix(irq);
+	error = arm_release_msix(child, irq);
 	return (error);
 }
 

@@ -165,9 +165,8 @@ arm_gic_probe(device_t dev)
 	return (BUS_PROBE_DEFAULT);
 }
 
-#if 0
 static void
-arm_gic_init_secondary(device_t dev)
+gic_init_secondary(device_t dev)
 {
 	struct arm_gic_softc *sc = device_get_softc(dev);
 	int i;
@@ -197,6 +196,7 @@ arm_gic_init_secondary(device_t dev)
 	gic_d_write_4(sc, GICD_ISENABLER(30 >> 5), (1UL << (30 & 0x1F)));
 }
 
+#if 0
 int
 gic_decode_fdt(uint32_t iparent, uint32_t *intr, int *interrupt,
     int *trig, int *pol)
@@ -490,7 +490,7 @@ arm_gic_unmask(device_t dev, int irq)
 
 #ifdef SMP
 static void
-arm_gic_ipi_send(device_t dev, cpuset_t cpus, u_int ipi)
+gic_ipi_send(device_t dev, cpuset_t cpus, u_int ipi)
 {
 	struct arm_gic_softc *sc = device_get_softc(dev);
 	uint32_t val = 0, i;
@@ -607,6 +607,11 @@ static device_method_t arm_gic_methods[] = {
 	DEVMETHOD(pic_eoi,		gic_eoi),
 	DEVMETHOD(pic_mask,		gic_mask_irq),
 	DEVMETHOD(pic_unmask,		gic_unmask_irq),
+
+#ifdef SMP
+	DEVMETHOD(pic_init_secondary,	gic_init_secondary),
+	DEVMETHOD(pic_ipi_send,		gic_ipi_send),
+#endif
 
 	{ 0, 0 }
 };

@@ -40,4 +40,10 @@ int	arm_setup_intr(const char *, driver_filter_t *, driver_intr_t,
 int	arm_teardown_intr(void *);
 void	arm_unmask_irq(u_int);
 
+#ifdef SMP
+void	arm_init_secondary(void);
+void	arm_setup_ipihandler(driver_filter_t *, u_int);
+void	arm_unmask_ipi(u_int);
+#endif
+
 #endif	/* _MACHINE_INTR_H */

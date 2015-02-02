@@ -127,3 +127,12 @@ METHOD void unmask {
 	u_int		irq;
 };
 
+METHOD void init_secondary {
+	device_t	dev;
+};
+
+METHOD void ipi_send {
+	device_t	dev;
+	cpuset_t	cpus;
+	u_int		ipi;
+};

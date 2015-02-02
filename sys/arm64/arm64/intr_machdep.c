@@ -39,16 +39,21 @@ __FBSDID("$FreeBSD");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/bus.h>
 #include <sys/kernel.h>
+#include <sys/ktr.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
-#include <sys/bus.h>
 #include <sys/cpuset.h>
 #include <sys/interrupt.h>
 
 #include <machine/cpufunc.h>
 #include <machine/intr.h>
+
+#ifdef SMP
+#include <machine/smp.h>
+#endif
 
 #include "pic_if.h"
 
@@ -374,3 +379,63 @@ arm_cpu_intr(struct trapframe *tf)
 	critical_exit();
 }
 
+#ifdef SMP
+void
+arm_setup_ipihandler(driver_filter_t *filt, u_int ipi)
+{
+
+	/* ARM64TODO: The hard coded 16 will be fixed with am_intrng */
+	arm_setup_intr("ipi", filt, NULL, (void *)((uintptr_t)ipi | 1<<16), ipi + 16,
+	    INTR_TYPE_MISC | INTR_EXCL, NULL);
+	arm_unmask_ipi(ipi);
+}
+
+void
+arm_unmask_ipi(u_int ipi)
+{
+	PIC_UNMASK(root_pic, ipi + 16);
+}
+
+void
+arm_init_secondary(void)
+{
+
+	PIC_INIT_SECONDARY(root_pic);
+}
+
+/* Sending IPI */
+void
+ipi_all_but_self(u_int ipi)
+{
+
+	/* ARM64TODO: We should support this */
+	panic("ipi_all_but_self");
+}
+
+void
+ipi_cpu(int cpu, u_int ipi)
+{
+	cpuset_t cpus;
+
+	CPU_ZERO(&cpus);
+	CPU_SET(cpu, &cpus);
+
+	/* ARM64TODO: This will be fixed with arm_intrng */
+	ipi += 16;
+
+	CTR2(KTR_SMP, "ipi_cpu: cpu: %d, ipi: %x", cpu, ipi);
+	PIC_IPI_SEND(root_pic, cpus, ipi);
+}
+
+void
+ipi_selected(cpuset_t cpus, u_int ipi)
+{
+
+	/* ARM64TODO: This will be fixed with arm_intrng */
+	ipi += 16;
+
+	CTR1(KTR_SMP, "ipi_selected: ipi: %x", ipi);
+	PIC_IPI_SEND(root_pic, cpus, ipi);
+}
+
+#endif

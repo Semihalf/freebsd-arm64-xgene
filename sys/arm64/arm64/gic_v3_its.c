@@ -210,13 +210,13 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 	uint64_t gits_baser, gits_tmp;
 	uint64_t type, esize, cache, share, psz;
 	uint32_t gits_typer;
-	size_t page_size, npages, tn;
-	size_t tmp;
+	size_t page_size, npages, nitspages, nidents, tn;
+	size_t its_tbl_size;
 	vm_offset_t ptab_vaddr;
 	vm_paddr_t ptab_paddr;
 	boolean_t first = TRUE;
 
-	page_size = PAGE_SIZE;
+	page_size = PAGE_SIZE_64K;
 
 	/* Read features first */
 	gits_typer = gic_its_read(sc, 4, GITS_TYPER);
@@ -234,17 +234,19 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 		case GITS_BASER_TYPE_RES7:
 			continue;
 		case GITS_BASER_TYPE_DEV:
-			tmp = esize * GITS_TYPER_DEVB(gits_typer);
-			tmp = roundup2(tmp, PAGE_SIZE);
-			npages = howmany(tmp, PAGE_SIZE);
+			nidents = (1 << GITS_TYPER_DEVB(gits_typer)) - 1;
+			its_tbl_size = esize * nidents;
+			its_tbl_size = roundup2(its_tbl_size, page_size);
+			npages = howmany(its_tbl_size, PAGE_SIZE);
+			break;
 		default:
-			npages = 1;
+			npages = howmany(page_size, PAGE_SIZE);
 			break;
 		}
 
 		/* Allocate required space */
 		ptab_vaddr = (vm_offset_t)contigmalloc(npages * PAGE_SIZE,
-		    M_GIC_V3_ITS, M_WAITOK, 0, ~0UL, PAGE_SIZE, 0);
+		    M_GIC_V3_ITS, M_WAITOK | M_ZERO, 0, ~0UL, PAGE_SIZE, 0);
 
 		sc->its_ptabs[tn].ptab_vaddr = ptab_vaddr;
 		sc->its_ptabs[tn].ptab_pgsz = PAGE_SIZE;
@@ -259,19 +261,27 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 		cache = GITS_BASER_CACHE_NCNB;
 		share = GITS_BASER_SHARE_IS;
 
-		switch (page_size) {
-		case (1 << 12):		/* 4KB */
-			psz = GITS_BASER_PSZ_4K;
-			break;
-		default:
-			/* XXX: Other page sizes are currently not supported */
-			device_printf(sc->dev, "Unsupported page size: %zuKB\n",
-			    page_size / 1024);
-			its_free_tables(sc);
-			return (ENXIO);
-		}
-
 		while (1) {
+			nitspages = howmany(its_tbl_size, page_size);
+
+			switch (page_size) {
+			case (1 << 12):		/* 4KB */
+				psz = GITS_BASER_PSZ_4K;
+				break;
+			case (1 << 14):		/* 16KB */
+				psz = GITS_BASER_PSZ_4K;
+				break;
+			case (1 << 16):		/* 64KB */
+				psz = GITS_BASER_PSZ_64K;
+				break;
+			default:
+				/* XXX: Other page sizes are currently not supported */
+				device_printf(sc->dev, "Unsupported page size: %zuKB\n",
+				    page_size / 1024);
+				its_free_tables(sc);
+				return (ENXIO);
+			}
+
 			/* Clear fields under modification first */
 			gits_baser &= ~(GITS_BASER_VALID |
 			    GITS_BASER_CACHE_MASK | GITS_BASER_TYPE_MASK |
@@ -284,7 +294,7 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			    (cache << GITS_BASER_CACHE_SHIFT) |
 			    (share << GITS_BASER_SHARE_SHIFT) |
 			    (psz << GITS_BASER_PSZ_SHIFT) |
-			    ptab_paddr | npages;
+			    ptab_paddr | (nitspages - 1);
 
 			gic_its_write(sc, 8, GITS_BASER(tn), gits_baser);
 			/*
@@ -298,12 +308,24 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 				share >>= GITS_BASER_SHARE_SHIFT;
 				continue;
 			}
+
+			if ((gits_tmp ^ gits_baser) & GITS_BASER_PSZ_MASK) {
+				switch (page_size) {
+				case (1 << 14):
+					page_size = (1 << 12);
+					continue;
+				case (1 << 16):
+					page_size = (1 << 14);
+					continue;
+				}
+			}
 			/* We did what we could */
 			break;
 		}
 
 		if (gits_tmp != gits_baser) {
-			device_printf(sc->dev, "Could not allocate ITTs\n");
+			device_printf(sc->dev,
+			    "Could not allocate ITS tables\n");
 			its_free_tables(sc);
 			return (ENXIO);
 		}
@@ -322,7 +344,7 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			       "\tPTAB%zu for %s: PA 0x%lx, %lu entries,"
 			       " cache policy %s, %s shareable,"
 			       " page size %zuKB\n", tn, its_ptab_type[type],
-			       ptab_paddr, (page_size * npages) / esize,
+			       ptab_paddr, (page_size * nitspages) / esize,
 			       its_ptab_cache[cache], its_ptab_share[share],
 			       page_size / 1024);
 		}

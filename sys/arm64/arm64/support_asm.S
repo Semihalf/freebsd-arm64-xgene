@@ -34,6 +34,64 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/setjmp.h>
 
+#include "assym.s"
+
+/*
+ * One of the fu* or su* functions failed, return -1.
+ */
+ENTRY(fsu_fault)
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the handler function */
+	mov	x0, #-1
+	ret
+END(fsu_fault)
+
+/*
+ * int fubyte(volatile const void *)
+ */
+ENTRY(fubyte)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x1)	/* And set it */
+	ldrb	w0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
+	ret				/* Return */
+END(fubyte)
+
+/*
+ * int fuword(volatile const void *)
+ */
+ENTRY(fuword16)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x1)	/* And set it */
+	ldrh	w0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
+	ret				/* Return */
+END(fuword16)
+
+/*
+ * int32_t fuword32(volatile const void *)
+ */
+ENTRY(fuword32)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x1)	/* And set it */
+	ldr	w0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
+	ret				/* Return */
+END(fuword32)
+
+/*
+ * long fuword(volatile const void *)
+ * int64_t fuword64(volatile const void *)
+ */
+ENTRY(fuword)
+EENTRY(fuword64)
+	adr	x6, fsu_fault		/* Load the fault handler */
+	SET_FAULT_HANDLER(x6, x1)	/* And set it */
+	ldr	x0, [x0]		/* Try loading the data */
+	SET_FAULT_HANDLER(xzr, x1)	/* Reset the fault handler */
+	ret				/* Return */
+EEND(fuword64)
+END(fuword)
+
 ENTRY(setjmp)
 	/* Store the stack pointer */
 	mov	x8, sp

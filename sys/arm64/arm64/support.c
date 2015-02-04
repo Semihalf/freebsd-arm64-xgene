@@ -33,41 +33,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/resourcevar.h>
 
 int
-fubyte(volatile const void *base)
-{
-
-	return *(volatile uint8_t *)base;
-}
-
-long
-fuword(volatile const void *base)
-{
-
-	return *(volatile long *)base;
-}
-
-int
-fuword16(volatile const void *base)
-{
-
-	panic("fuword16");
-}
-
-int32_t
-fuword32(volatile const void *base)
-{
-
-	panic("fuword32");
-}
-
-int64_t
-fuword64(volatile const void *base)
-{
-
-	panic("fuword64");
-}
-
-int
 fuswintr(void *base)
 {
 

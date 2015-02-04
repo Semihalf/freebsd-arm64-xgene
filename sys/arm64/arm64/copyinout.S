@@ -35,17 +35,11 @@ __FBSDID("$FreeBSD$");
 
 #include "assym.s"
 
-.macro	set_fault_handler handler, tmp
-	ldr	\tmp, [x18, #PC_CURTHREAD]	/* Load curthread */
-	ldr	\tmp, [\tmp, #TD_PCB]		/* Load the pcb */
-	str	\handler, [\tmp, #PCB_ONFAULT]	/* Set the handler */
-.endm
-
 /*
  * Fault handler for the copy{in,out} functions below.
  */
 ENTRY(copyio_fault)
-	set_fault_handler xzr, x1 /* Clear the handler */
+	SET_FAULT_HANDLER(xzr, x1) /* Clear the handler */
 	mov	x0, #EFAULT
 	ret
 END(copyio_fault)
@@ -59,14 +53,14 @@ ENTRY(copyout)
 	cbz	x2, 2f		/* If len == 0 then skip loop */
 
 	adr	x6, copyio_fault /* Get the handler address */
-	set_fault_handler x6, x7 /* Set the handler */
+	SET_FAULT_HANDLER(x6, x7) /* Set the handler */
 
 1:	ldrb	w4, [x0], #1	/* Load from kaddr */
 	strb	w4, [x1], #1	/* Store in uaddr */
 	sub	x2, x2, #1	/* len-- */
 	cbnz	x2, 1b
 
-	set_fault_handler xzr, x7 /* Clear the handler */
+	SET_FAULT_HANDLER(xzr, x7) /* Clear the handler */
 
 2:	mov	x0, xzr		/* return 0 */
 	ret
@@ -81,14 +75,14 @@ ENTRY(copyin)
 	cbz	x2, 2f		/* If len == 0 then skip loop */
 
 	adr	x6, copyio_fault /* Get the handler address */
-	set_fault_handler x6, x7 /* Set the handler */
+	SET_FAULT_HANDLER(x6, x7) /* Set the handler */
 
 1:	ldrb	w4, [x0], #1	/* Load from uaddr */
 	strb	w4, [x1], #1	/* Store in kaddr */
 	sub	x2, x2, #1	/* len-- */
 	cbnz	x2, 1b
 
-	set_fault_handler xzr, x7 /* Clear the handler */
+	SET_FAULT_HANDLER(xzr, x7) /* Clear the handler */
 
 2:	mov	x0, xzr		/* return 0 */
 	ret
@@ -104,7 +98,7 @@ ENTRY(copyinstr)
 	cbz	x2, 3f		/* If len == 0 then skip loop */
 
 	adr	x6, copyio_fault /* Get the handler address */
-	set_fault_handler x6, x7 /* Set the handler */
+	SET_FAULT_HANDLER(x6, x7) /* Set the handler */
 
 1:	ldrb	w4, [x0], #1	/* Load from uaddr */
 	strb	w4, [x1], #1	/* Store in kaddr */
@@ -113,7 +107,7 @@ ENTRY(copyinstr)
 	add	x5, x5, #1	/* count++ */
 	cbnz	x2, 1b
 
-2:	set_fault_handler xzr, x7 /* Clear the handler */
+2:	SET_FAULT_HANDLER(xzr, x7) /* Clear the handler */
 
 3:	cbz	x3, 4f		/* Check if done != NULL */
 	add	x5, x5, #1	/* count++ */

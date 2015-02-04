@@ -39,7 +39,10 @@
 
 #define	ENTRY(sym)						\
 	.text; .globl sym; .align 2; sym:
+#define	EENTRY(sym)						\
+	.globl	sym; sym:
 #define END(sym) .size sym, . - sym
+#define	EEND(sym)
 
 #define	WEAK_REFERENCE(sym, alias)				\
 	.weak alias;						\
@@ -52,5 +55,16 @@
 #else
 #define	PIC_SYM(x,y)	x
 #endif
+
+/*
+ * Sets the trap fault handler. The exception handler will return to the
+ * address in the handler register on a data abort or the xzr register to
+ * clear the handler. The tmp parameter should be a register able to hold
+ * the temporary data.
+ */
+#define	SET_FAULT_HANDLER(handler, tmp)					\
+	ldr	tmp, [x18, #PC_CURTHREAD];	/* Load curthread */	\
+	ldr	tmp, [tmp, #TD_PCB];		/* Load the pcb */	\
+	str	handler, [tmp, #PCB_ONFAULT]	/* Set the handler */
 
 #endif /* _MACHINE_ASM_H_ */

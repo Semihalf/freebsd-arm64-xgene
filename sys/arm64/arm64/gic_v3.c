@@ -218,8 +218,11 @@ gic_v3_dispatch(device_t dev, struct trapframe *frame)
 		if (__predict_false(active_irq == ICC_IAR1_EL1_SPUR))
 			break;
 
-		if (__predict_true(active_irq > 15 && active_irq < 1020))
+		if (__predict_true(active_irq > 15 && active_irq < 1020)) {
 			arm_dispatch_intr(active_irq, frame);
+			continue;
+		}
+
 		if (active_irq >= 8192)
 			panic("Got LPI");
 

@@ -93,39 +93,6 @@ static gic_v3_initseq_t gic_v3_secondary_init[] __unused = {
 };
 
 /*
- * GIC Distributor accessors.
- * Notice that only GIC sofc can be passed.
- */
-#define	gic_d_read(sc, len, reg)		\
-({						\
-	bus_read_##len(sc->gic_dist, reg);	\
-})
-
-#define	gic_d_write(sc, len, reg, val)		\
-({						\
-	bus_write_##len(sc->gic_dist, reg, val);\
-})
-
-/* GIC Re-Distributor accessors (per-CPU) */
-#define	gic_r_read(sc, len, reg)		\
-({						\
-	u_int cpu = PCPU_GET(cpuid);		\
-						\
-	bus_read_##len(				\
-	    sc->gic_redists.pcpu[cpu],		\
-	    reg);				\
-})
-
-#define	gic_r_write(sc, len, reg, val)		\
-({						\
-	u_int cpu = PCPU_GET(cpuid);		\
-						\
-	bus_write_##len(			\
-	    sc->gic_redists.pcpu[cpu],		\
-	    reg, val);				\
-})
-
-/*
  * Device interface.
  */
 int
@@ -133,6 +100,7 @@ gic_v3_attach(device_t dev)
 {
 	struct gic_v3_softc *sc;
 	gic_v3_initseq_t *init_func;
+	uint32_t typer;
 	int rid;
 	int err;
 	size_t i;
@@ -179,11 +147,20 @@ gic_v3_attach(device_t dev)
 	for (i = 0, rid = 1; i < sc->gic_redists.nregions; i++, rid++)
 		sc->gic_redists.regions[i] = sc->gic_res[rid];
 
-	/* Get the number of supported interrupts */
-	sc->gic_nirqs = gic_d_read(sc, 4, GICD_TYPER) & 0x1F;
+	/* Get the number of supported SPI interrupts */
+	typer = gic_d_read(sc, 4, GICD_TYPER);
+	sc->gic_nirqs = typer & 0x1F;
 	sc->gic_nirqs = (sc->gic_nirqs + 1) * 32;
 	if (sc->gic_nirqs > 1020)
 		sc->gic_nirqs = 1020;
+
+	/* Get the number of supported interrupt identifier bits */
+	sc->gic_idbits = GICD_TYPER_IDBITS(typer);
+
+	if (bootverbose) {
+		device_printf(dev, "SPIs: %u, IDs: %u\n",
+		    sc->gic_nirqs, (1 << sc->gic_idbits) - 1);
+	}
 
 	/* Train init sequence for boot CPU */
 	for (init_func = gic_v3_primary_init; *init_func != NULL; init_func++) {

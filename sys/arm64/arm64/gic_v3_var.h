@@ -32,12 +32,15 @@
 
 #define	GIC_V3_DEVSTR	"ARM Generic Interrupt Controller v3.0"
 
+#define	LPI_FLAGS_CONF_FLUSH	(1UL << 0)
 #define	LPI_CONFTAB_SIZE	PAGE_SIZE_64K
 /* 1 bit per LPI + 1 KB more for the obligatory PPI, SGI, SPI stuff */
 #define	LPI_PENDTAB_SIZE	((LPI_CONFTAB_SIZE / 8) + 0x400)
 
 struct redist_lpis {
 	vm_offset_t		conf_base;
+	vm_offset_t		pend_base[MAXCPU];
+	uint64_t		flags;
 };
 
 struct gic_redists {
@@ -65,6 +68,7 @@ struct gic_v3_softc {
 	struct gic_redists	gic_redists;
 
 	u_int			gic_nirqs;
+	u_int			gic_idbits;
 };
 
 extern devclass_t gic_v3_devclass;
@@ -86,11 +90,28 @@ void gic_v3_unmask_irq(device_t, u_int);
 #define	GIC_V3_ITS_DEVSTR	"ARM GIC Interrupt Translation Service"
 #define	GIC_V3_ITS_COMPSTR	"arm,gic-v3-its"
 
-
-/* ITS commands description. Each command is 32 bytes long */
-struct its_cmd {
-	uint64_t its_cmd_desc[4];	/* ITS command descriptor */
+/* LPI chunk owned by ITS device */
+struct lpi_chunk {
+	u_int	lpi_base;
+	u_int	lpi_num;
+	u_int	lpi_free;	/* First free LPI in set */
 };
+
+/* ITS device */
+struct its_dev {
+	TAILQ_ENTRY(its_dev)	entry;
+	/* PCI device */
+	device_t		pci_dev;
+	/* Device ID (i.e. PCI device ID) */
+	uint16_t		devid;
+	/* List of assigned LPIs */
+	struct lpi_chunk	lpis;
+	/* Virtual address of ITT */
+	vm_offset_t		itt;
+	/* Interrupt collection */
+	struct its_col *	col;
+};
+TAILQ_HEAD(its_dev_list, its_dev);
 
 /* ITS private table description */
 struct its_ptab {
@@ -105,25 +126,137 @@ struct its_col {
 	uint64_t	col_id;		/* Collection ID */
 };
 
+/* ITS command. Each command is 32 bytes long */
+struct its_cmd {
+	uint64_t	cmd_dword[4];	/* ITS command double word */
+};
+
+#define	ITS_CMD_SYNC	(0x05)
+#define	ITS_CMD_MAPD	(0x08)
+#define	ITS_CMD_MAPC	(0x09)
+#define	ITS_CMD_MAPI	(0x0b)
+#define	ITS_CMD_INV	(0x0c)
+#define	ITS_CMD_INVALL	(0x0d)
+
+/*
+ * ITS command descriptor.
+ * Idea for command description passing taken from Linux.
+ */
+struct its_cmd_desc {
+	uint8_t cmd_type;
+
+	union {
+		struct {
+			struct its_col *col;
+		} cmd_desc_sync;
+
+		struct {
+			struct its_col *col;
+			uint8_t valid;
+		} cmd_desc_mapc;
+
+		struct {
+			struct its_dev *its_dev;
+			uint32_t lpinum;
+		} cmd_desc_mapi;
+
+		struct {
+			struct its_dev *its_dev;
+			uint8_t valid;
+		} cmd_desc_mapd;
+
+		struct {
+			struct its_dev *its_dev;
+			uint32_t lpinum;
+		} cmd_desc_inv;
+
+		struct {
+			struct its_col *col;
+		} cmd_desc_invall;
+	};
+};
+
 #define	ITS_CMDQ_SIZE		PAGE_SIZE_64K
 #define	ITS_CMDQ_NENTRIES	(ITS_CMDQ_SIZE / sizeof(struct its_cmd))
 
 #define	ITS_FLAGS_CMDQ_FLUSH	(1UL << 0)
 
+#define	ITS_TARGET_NONE		0xFBADBEEF
+
 struct gic_v3_its_softc {
 	device_t		dev;
 	struct resource	*	its_res;
 
-	struct its_cmd *	its_cmdq;	/* ITS command queue */
+	struct its_cmd *	its_cmdq_base;	/* ITS command queue base */
+	struct its_cmd *	its_cmdq_write;	/* ITS command queue write ptr */
 	struct its_ptab		its_ptabs[GITS_BASER_NUM];/* ITS private tables */
 	struct its_col *	its_cols;	/* Per-CPU collections */
 
 	uint64_t		its_flags;
+
+	struct its_dev_list	its_dev_list;
+
+	unsigned long *		its_lpi_bitmap;
+	uint32_t		its_lpi_maxid;
 };
 
 extern devclass_t gic_v3_its_devclass;
 
 int gic_v3_its_attach(device_t);
 int gic_v3_its_detach(device_t);
+
+/*
+ * GIC Distributor accessors.
+ * Notice that only GIC sofc can be passed.
+ */
+#define	gic_d_read(sc, len, reg)		\
+({						\
+	bus_read_##len(sc->gic_dist, reg);	\
+})
+
+#define	gic_d_write(sc, len, reg, val)		\
+({						\
+	bus_write_##len(sc->gic_dist, reg, val);\
+})
+
+/* GIC Re-Distributor accessors (per-CPU) */
+#define	gic_r_read(sc, len, reg)		\
+({						\
+	u_int cpu = PCPU_GET(cpuid);		\
+						\
+	bus_read_##len(				\
+	    sc->gic_redists.pcpu[cpu],		\
+	    reg);				\
+})
+
+#define	gic_r_write(sc, len, reg, val)		\
+({						\
+	u_int cpu = PCPU_GET(cpuid);		\
+						\
+	bus_write_##len(			\
+	    sc->gic_redists.pcpu[cpu],		\
+	    reg, val);				\
+})
+
+#define	PCI_DEVID(pci_dev)			\
+({						\
+	((pci_get_bus(pci_dev) << 8) |		\
+	 (pci_get_function(pci_dev) << 0));	\
+})
+
+/*
+ * Request number of maximum MSI-X vectors for this device.
+ * Device can ask for less vectors than maximum supported but not more.
+ */
+#define	PCI_MSIX_NUM(pci_dev)			\
+({						\
+	struct pci_devinfo *dinfo;		\
+	pcicfgregs *cfg;			\
+						\
+	dinfo = device_get_ivars(pci_dev);	\
+	cfg = &dinfo->cfg;			\
+						\
+	cfg->msix.msix_msgnum;			\
+})
 
 #endif /* _GIC_V3_VAR_H_ */

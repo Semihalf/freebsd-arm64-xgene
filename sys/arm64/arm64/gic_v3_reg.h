@@ -47,6 +47,8 @@
 #define	GICD_CTLR_RWP		(1 << 31)
 
 #define	GICD_TYPER		(0x0004)
+#define		GICD_TYPER_IDBITS(x)	((((x) >> 19) & 0x1F) + 1)
+
 #define	GICD_ISENABLER(n)	(0x0100 + ((n) * 4))
 #define	GICD_ICENABLER(n)	(0x0180 + ((n) * 4))
 #define	GICD_IPRIORITYR(n)	(0x0400 + ((n) * 4))
@@ -72,15 +74,98 @@
 #define	GICR_PIDR2_ARCH_GICv4	(0x40)
 
 /* Redistributor registers */
+#define	GICR_CTLR		GICD_CTLR
+#define		GICR_CTLR_LPI_ENABLE	(1 << 0)
+
 #define	GICR_PIDR2		GICD_PIDR2
 
 #define	GICR_TYPER		(0x0008)
+#define	GICR_TYPER_PLPIS	(1 << 0)
 #define	GICR_TYPER_VLPIS	(1 << 1)
 #define	GICR_TYPER_LAST		(1 << 4)
+#define	GICR_TYPER_CPUNUM_SHIFT	8
+#define	GICR_TYPER_CPUNUM_MASK	(0xFFFUL << GICR_TYPER_CPUNUM_SHIFT)
+#define	GICR_TYPER_CPUNUM(x)	\
+	    (((x) & GICR_TYPER_CPUNUM_MASK) >> GICR_TYPER_CPUNUM_SHIFT)
 
 #define	GICR_WAKER		(0x0014)
 #define	GICR_WAKER_PS		(1 << 1) /* Processor sleep */
 #define	GICR_WAKER_CA		(1 << 2) /* Children asleep */
+
+#define	GICR_PROPBASER		(0x0070)
+#define		GICR_PROPBASER_IDBITS_MASK	0x1FUL
+/*
+ * Cacheability
+ * 0x0 - Device-nGnRnE
+ * 0x1 - Normal Inner Non-cacheable
+ * 0x2 - Normal Inner Read-allocate, Write-through
+ * 0x3 - Normal Inner Read-allocate, Write-back
+ * 0x4 - Normal Inner Write-allocate, Write-through
+ * 0x5 - Normal Inner Write-allocate, Write-back
+ * 0x6 - Normal Inner Read-allocate, Write-allocate, Write-through
+ * 0x7 - Normal Inner Read-allocate, Write-allocate, Write-back
+ */
+#define		GICR_PROPBASER_CACHE_SHIFT	7
+#define		GICR_PROPBASER_CACHE_DnGnRnE	0x0UL
+#define		GICR_PROPBASER_CACHE_NIN	0x1UL
+#define		GICR_PROPBASER_CACHE_NIRAWT	0x2UL
+#define		GICR_PROPBASER_CACHE_NIRAWB	0x3UL
+#define		GICR_PROPBASER_CACHE_NIWAWT	0x4UL
+#define		GICR_PROPBASER_CACHE_NIWAWB	0x5UL
+#define		GICR_PROPBASER_CACHE_NIRAWAWT	0x6UL
+#define		GICR_PROPBASER_CACHE_NIRAWAWB	0x7UL
+
+/*
+ * Shareability
+ * 0x0 - Non-shareable
+ * 0x1 - Inner-shareable
+ * 0x2 - Outer-shareable
+ * 0x3 - Reserved. Threated as 0x0
+ */
+#define		GICR_PROPBASER_SHARE_SHIFT	10
+#define		GICR_PROPBASER_SHARE_NS		0x0UL
+#define		GICR_PROPBASER_SHARE_IS		0x1UL
+#define		GICR_PROPBASER_SHARE_OS		0x2UL
+#define		GICR_PROPBASER_SHARE_RES	0x3UL
+#define		GICR_PROPBASER_SHARE_MASK	\
+		    (0x3UL << GICR_PROPBASER_SHARE_SHIFT)
+
+#define	GICR_PENDBASER		(0x0078)
+/*
+ * Cacheability
+ * 0x0 - Device-nGnRnE
+ * 0x1 - Normal Inner Non-cacheable
+ * 0x2 - Normal Inner Read-allocate, Write-through
+ * 0x3 - Normal Inner Read-allocate, Write-back
+ * 0x4 - Normal Inner Write-allocate, Write-through
+ * 0x5 - Normal Inner Write-allocate, Write-back
+ * 0x6 - Normal Inner Read-allocate, Write-allocate, Write-through
+ * 0x7 - Normal Inner Read-allocate, Write-allocate, Write-back
+ */
+#define		GICR_PENDBASER_CACHE_SHIFT	7
+#define		GICR_PENDBASER_CACHE_DnGnRnE	0x0UL
+#define		GICR_PENDBASER_CACHE_NIN	0x1UL
+#define		GICR_PENDBASER_CACHE_NIRAWT	0x2UL
+#define		GICR_PENDBASER_CACHE_NIRAWB	0x3UL
+#define		GICR_PENDBASER_CACHE_NIWAWT	0x4UL
+#define		GICR_PENDBASER_CACHE_NIWAWB	0x5UL
+#define		GICR_PENDBASER_CACHE_NIRAWAWT	0x6UL
+#define		GICR_PENDBASER_CACHE_NIRAWAWB	0x7UL
+
+/*
+ * Shareability
+ * 0x0 - Non-shareable
+ * 0x1 - Inner-shareable
+ * 0x2 - Outer-shareable
+ * 0x3 - Reserved. Threated as 0x0
+ */
+#define		GICR_PENDBASER_SHARE_SHIFT	10
+#define		GICR_PENDBASER_SHARE_NS		0x0UL
+#define		GICR_PENDBASER_SHARE_IS		0x1UL
+#define		GICR_PENDBASER_SHARE_OS		0x2UL
+#define		GICR_PENDBASER_SHARE_RES	0x3UL
+#define		GICR_PENDBASER_SHARE_MASK	\
+		    (0x3UL << GICR_PENDBASER_SHARE_SHIFT)
 
 /* Re-distributor registers for SGIs and PPIs */
 #define	GICR_ISENABLER0		(0x0100)
@@ -137,6 +222,7 @@
 #define		GITS_CBASER_PA_MASK	(0xFFFFFFFFFUL << GITS_CBASER_PA_SHIFT)
 
 #define	GITS_CWRITER		(0x0088)
+#define	GITS_CREADR		(0x0090)
 
 #define	GITS_BASER_BASE		(0x0100)
 #define	GITS_BASER(x)		(GITS_BASER_BASE + (x) * 8)
@@ -208,6 +294,7 @@
 #define		GITS_BASER_NUM		8
 
 #define	GITS_TYPER		(0x0008)
+#define		GITS_TYPER_PTA		(1UL << 19)
 #define		GITS_TYPER_DEVB_SHIFT	13
 #define		GITS_TYPER_DEVB_MASK	(0x1FUL << GITS_TYPER_DEVB_SHIFT)
 /* Number of device identifiers implemented */

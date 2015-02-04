@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/bus.h>
 #include <machine/cpu.h>
+#include <machine/intr.h>
 
 #include "gic_v3_reg.h"
 #include "gic_v3_var.h"
@@ -109,6 +110,8 @@ const char *its_ptab_type[] = {
 	[GITS_BASER_TYPE_RES6] = "Reserved (6)",
 	[GITS_BASER_TYPE_RES7] = "Reserved (7)",
 };
+
+static struct gic_v3_its_softc *its_sc;
 
 #define	gic_its_read(sc, len, reg)		\
 ({						\
@@ -189,6 +192,17 @@ gic_v3_its_attach(device_t dev)
 
 	/* 8. Init ITS devices list */
 	TAILQ_INIT(&sc->its_dev_list);
+
+	arm_register_msi_pic(dev);
+
+	/*
+	 * XXX: We need to have ITS software context when.
+	 * Being called by the interrupt code (mask/unmask).
+	 * This may be used only when one ITS is present in
+	 * the system and eventually should be removed.
+	 */
+	its_sc = sc;
+
 	return (0);
 
 error:
@@ -769,6 +783,52 @@ retry:
 
 	return (0);
 }
+
+static void
+lpi_configure(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
+    uint32_t lpinum, boolean_t unmask)
+{
+	device_t parent;
+	struct gic_v3_softc *gic_sc;
+	uint8_t *conf_byte;
+
+	parent = device_get_parent(sc->dev);
+	gic_sc = device_get_softc(parent);
+
+	conf_byte = (uint8_t *)gic_sc->gic_redists.lpis.conf_base;
+	conf_byte += (lpinum - 8192);
+
+	if (unmask)
+		*conf_byte |= LPI_CONF_ENABLE;
+	else
+		*conf_byte &= ~LPI_CONF_ENABLE;
+
+	if (gic_sc->gic_redists.lpis.flags & LPI_FLAGS_CONF_FLUSH) {
+		/* XXX ARM64TODO: Flush the cache when we have it enabled */
+	} else {
+		/* XXX Inner shareable store is enough */
+		dsb();
+	}
+
+	its_cmd_inv(sc, its_dev, lpinum);
+}
+
+void
+lpi_unmask_irq(device_t parent, uint32_t irq)
+{
+	struct its_dev *its_dev;
+
+	TAILQ_FOREACH(its_dev, &its_sc->its_dev_list, entry) {
+		if (irq >= its_dev->lpis.lpi_base &&
+		    irq < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)) {
+			lpi_configure(its_sc, its_dev, irq, 1);
+			return;
+		}
+	}
+
+	KASSERT(0, ("Trying to unmaks not existing LPI: %u\n", irq));
+}
+
 /*
  * Commands handling.
  */
@@ -870,7 +930,7 @@ its_cmd_mapc(struct gic_v3_its_softc *sc, struct its_col *col, uint8_t valid)
 	its_cmd_send(sc, &desc);
 }
 
-static void __unused
+static void
 its_cmd_mapi(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
     uint32_t lpinum)
 {
@@ -896,7 +956,7 @@ its_cmd_mapd(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
 	its_cmd_send(sc, &desc);
 }
 
-static void __unused
+static void
 its_cmd_inv(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
     uint32_t lpinum)
 {
@@ -1131,7 +1191,7 @@ its_device_find(struct gic_v3_its_softc *sc, device_t pci_dev)
 	return (NULL);
 }
 
-static struct its_dev * __unused
+static struct its_dev *
 its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev)
 {
 	struct its_dev	*newdev;
@@ -1180,4 +1240,85 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev)
 	its_cmd_mapd(sc, newdev, 1);
 
 	return (newdev);
+}
+
+static __inline void
+its_device_asign_lpi(struct its_dev *its_dev, u_int *irq)
+{
+
+	KASSERT((its_dev->lpis.lpi_free > 0),
+	    ("Cannot provide more LPIs for this device. LPI num: %u, free %u",
+	    its_dev->lpis.lpi_num, its_dev->lpis.lpi_free));
+	*irq = its_dev->lpis.lpi_base + (its_dev->lpis.lpi_num -
+	    its_dev->lpis.lpi_free);
+	its_dev->lpis.lpi_free--;
+}
+/*
+ * Message signalled interrupts handling.
+ */
+
+/*
+ * XXX ARM64TODO: Watch out for "irq" type.
+ *
+ * In theory GIC can handle up to (2^32 - 1) interrupt IDs whereas
+ * we pass "irq" pointer of type integer. This is obviously wrong but
+ * is determined by the way as PCI layer wants it to be done.
+ * WARNING: devid must be PCI BUS+FUNCTION pair.
+ */
+int
+gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
+{
+	struct gic_v3_its_softc *sc;
+	struct its_dev *its_dev;
+
+	sc = device_get_softc(dev);
+	/*
+	 * TODO: Allocate device as seen by ITS if not already available.
+	 *	 Notice that MSI-X interrupts are allocated on one-by-one basis.
+	 */
+	its_dev = its_device_alloc(sc, pci_dev);
+	if (its_dev == NULL)
+		return (ENOMEM);
+
+	its_device_asign_lpi(its_dev, irq);
+
+	return (0);
+}
+
+static void
+lpi_map_to_device(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
+    uint32_t lpinum)
+{
+
+	KASSERT((lpinum >= its_dev->lpis.lpi_base) &&
+		(lpinum < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)),
+		("Trying to map ivalid LPI %u for this device\n", lpinum));
+
+	its_cmd_mapi(sc, its_dev, lpinum);
+}
+
+int
+gic_v3_its_map_msix(device_t dev, device_t pci_dev, int irq, uint64_t *addr,
+    uint32_t *data)
+{
+	struct gic_v3_its_softc *sc;
+	bus_space_handle_t its_bsh;
+	struct its_dev *its_dev;
+	uint64_t its_pa;
+
+	sc = device_get_softc(dev);
+	/* Verify that this device is allocated and owns this LPI */
+	its_dev = its_device_find(sc, pci_dev);
+	if (its_dev == NULL)
+		return (EINVAL);
+
+	lpi_map_to_device(sc, its_dev, irq);
+
+	its_bsh = rman_get_bushandle(&sc->its_res[0]);
+	its_pa = vtophys(its_bsh);
+
+	*addr = (its_pa + GITS_TRANSLATER);
+	*data = irq;
+
+	return (0);
 }

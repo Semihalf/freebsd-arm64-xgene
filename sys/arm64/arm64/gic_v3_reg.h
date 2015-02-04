@@ -305,6 +305,8 @@
 /* Number of bytes per ITT Entry */
 #define		GITS_TYPER_ITTES(x)	\
 		    ((((x) & GITS_TYPER_ITTES_MASK) >> GITS_TYPER_ITTES_SHIFT) + 1)
+
+#define	GITS_TRANSLATER		(0x10040)
 /*
  * LPI related
  */

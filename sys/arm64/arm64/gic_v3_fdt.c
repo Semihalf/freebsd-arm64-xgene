@@ -310,6 +310,10 @@ static device_method_t gic_v3_its_methods[] = {
 	DEVMETHOD(device_probe,		gic_v3_its_fdt_probe),
 	DEVMETHOD(device_attach,	gic_v3_its_fdt_attach),
 
+	/* PIC interface */
+	DEVMETHOD(pic_alloc_msix,	gic_v3_its_alloc_msix),
+	DEVMETHOD(pic_map_msix,		gic_v3_its_map_msix),
+
 	/* End */
 	DEVMETHOD_END
 };

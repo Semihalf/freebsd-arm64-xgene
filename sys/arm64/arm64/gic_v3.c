@@ -220,6 +220,8 @@ gic_v3_dispatch(device_t dev, struct trapframe *frame)
 
 		if (__predict_true(active_irq > 15 && active_irq < 1020))
 			arm_dispatch_intr(active_irq, frame);
+		if (active_irq >= 8192)
+			panic("Got LPI");
 
 		if (active_irq < 16) {
 			/*
@@ -267,7 +269,6 @@ gic_v3_unmask_irq(device_t dev, u_int irq)
 {
 	struct gic_v3_softc *sc;
 	uint32_t mask;
-	enum gic_v3_xdist xdist;
 
 	sc = device_get_softc(dev);
 
@@ -276,13 +277,15 @@ gic_v3_unmask_irq(device_t dev, u_int irq)
 	if (irq < 32) { /* SGIs and PPIs in corresponding Re-Distributor */
 		gic_r_write(sc, 4,
 		    PAGE_SIZE_64K + GICD_ISENABLER(irq >> 5), mask);
-		xdist = REDIST;
-	} else { /* SPIs in distributor */
+		gic_v3_wait_for_rwp(sc, REDIST);
+	} else if (irq >= 32 && irq < 8192) { /* SPIs in distributor */
 		gic_d_write(sc, 4, GICD_ISENABLER(irq >> 5), mask);
-		xdist = DIST;
+		gic_v3_wait_for_rwp(sc, DIST);
+	} else if (irq >= 8192) { /* LPIs */
+		lpi_unmask_irq(dev, irq);
+	} else {
+		KASSERT(0, ("%s: Unsupported IRQ number %u", __func__, irq));
 	}
-
-	gic_v3_wait_for_rwp(sc, xdist);
 }
 
 /*

@@ -705,7 +705,7 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	    (cache << GICR_PENDBASER_CACHE_SHIFT) |
 	    (cache << GICR_PENDBASER_SHARE_SHIFT);
 
-	gic_r_write(gic_sc, 8, GICR_PROPBASER, gicr_xbaser);
+	gic_r_write(gic_sc, 8, GICR_PENDBASER, gicr_xbaser);
 
 	/* Enable LPIs */
 	gicr_ctlr = gic_r_read(gic_sc, 4, GICR_CTLR);

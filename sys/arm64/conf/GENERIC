@@ -85,11 +85,9 @@ options 	INVARIANT_SUPPORT	# Extra sanity checks of internal structures, require
 #options 	WITNESS			# Enable checks to detect deadlocks and cycles
 #options 	WITNESS_SKIPSPIN	# Don't run witness on spinlocks for speed
 options 	MALLOC_DEBUG_MAXZONES=8	# Separate malloc(9) zones
-options 	EARLY_PRINTF
 
 # Serial (COM) ports
 device		uart		# Generic UART driver
-device		pl011
 
 # Pseudo devices.
 device		loop		# Network loopback
@@ -108,3 +106,6 @@ device		bpf		# Berkeley packet filter
 
 device		psci		# Support for ARM PSCI
 options 	FDT
+options 	FDT_DTB_STATIC
+makeoptions 	FDT_DTS_FILE=apm-mustang.dts
+

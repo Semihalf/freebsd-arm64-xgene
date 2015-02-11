@@ -172,17 +172,17 @@
 #define	DMAP_MAX_ADDRESS	(0xffffffcfffffffffUL)
 
 #define	DMAP_MIN_PHYSADDR	(0x0000000000000000UL)
-#define	DMAP_MAX_PHYSADDR	(DMAP_MAX_ADDRESS - DMAP_MIN_ADDRESS)
+#define	DMAP_MAX_PHYSADDR	(DMAP_MAX_ADDRESS - DMAP_MIN_ADDRESS + DMAP_MIN_PHYSADDR)
 
 /* True if pa is in the dmap range */
-#define	PHYS_IN_DMAP(pa)	((pa) <= DMAP_MAX_PHYSADDR)
+#define	PHYS_IN_DMAP(pa)	(((pa) >= DMAP_MIN_PHYSADDR) && ((pa) <= DMAP_MAX_PHYSADDR))
 
 #define	PHYS_TO_DMAP(pa)						\
 ({									\
 	KASSERT(PHYS_IN_DMAP(pa),					\
 	    ("%s: PA out of range, PA: 0x%lx", __func__,		\
 	    (vm_paddr_t)(pa)));						\
-	(pa) | DMAP_MIN_ADDRESS;					\
+	(pa) - DMAP_MIN_PHYSADDR + DMAP_MIN_ADDRESS;			\
 })
 
 #define	DMAP_TO_PHYS(va)						\
@@ -190,7 +190,7 @@
 	KASSERT(((va) <= DMAP_MAX_ADDRESS || (va) >= DMAP_MIN_ADDRESS),	\
 	    ("%s: VA out of range, VA: 0x%lx", __func__,		\
 	    (vm_offset_t)(va)));					\
-	(va) & ~DMAP_MIN_ADDRESS;					\
+	(va) - DMAP_MIN_ADDRESS + DMAP_MIN_PHYSADDR;			\
 })
 
 #define	VM_MIN_USER_ADDRESS	(0x0000000000000000UL)

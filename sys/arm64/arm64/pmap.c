@@ -862,7 +862,7 @@ pmap_bootstrap_dmap(vm_offset_t l1pt)
 	l1 = (pd_entry_t *)l1pt;
 	l1_slot = pmap_l1_index(DMAP_MIN_ADDRESS);
 
-	for (pa = 0; va < DMAP_MAX_ADDRESS;
+	for (pa = DMAP_MIN_PHYSADDR; va < DMAP_MAX_ADDRESS;
 	    pa += L1_SIZE, va += L1_SIZE, l1_slot++) {
 		KASSERT(l1_slot < Ln_ENTRIES, ("Invalid L1 index"));
 

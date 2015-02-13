@@ -103,7 +103,7 @@ struct its_dev {
 	/* PCI device */
 	device_t		pci_dev;
 	/* Device ID (i.e. PCI device ID) */
-	uint16_t		devid;
+	uint32_t		devid;
 	/* List of assigned LPIs */
 	struct lpi_chunk	lpis;
 	/* Virtual address of ITT */
@@ -244,7 +244,9 @@ void lpi_unmask_irq(device_t, uint32_t);
 
 #define	PCI_DEVID(pci_dev)			\
 ({						\
-	((pci_get_bus(pci_dev) << 8) |		\
+	((pci_get_domain(pci_dev) << 16) |	\
+	 (pci_get_bus(pci_dev) << 8) |		\
+	 (pci_get_slot(pci_dev) << 3) |		\
 	 (pci_get_function(pci_dev) << 0));	\
 })
 

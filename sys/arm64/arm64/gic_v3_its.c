@@ -1196,7 +1196,7 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev)
 {
 	struct its_dev	*newdev;
 	uint64_t typer;
-	uint16_t devid;
+	uint32_t devid;
 	u_int nvecs;
 	u_int cpuid;
 	size_t esize;

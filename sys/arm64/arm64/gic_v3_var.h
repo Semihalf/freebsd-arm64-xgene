@@ -134,6 +134,7 @@ struct its_cmd {
 #define	ITS_CMD_SYNC	(0x05)
 #define	ITS_CMD_MAPD	(0x08)
 #define	ITS_CMD_MAPC	(0x09)
+#define	ITS_CMD_MAPVI	(0x0a)
 #define	ITS_CMD_MAPI	(0x0b)
 #define	ITS_CMD_INV	(0x0c)
 #define	ITS_CMD_INVALL	(0x0d)
@@ -154,6 +155,12 @@ struct its_cmd_desc {
 			struct its_col *col;
 			uint8_t valid;
 		} cmd_desc_mapc;
+
+		struct {
+			struct its_dev *its_dev;
+			uint32_t pid;
+			uint32_t id;
+		} cmd_desc_mapvi;
 
 		struct {
 			struct its_dev *its_dev;
@@ -209,6 +216,7 @@ int gic_v3_its_alloc_msix(device_t, device_t, int *);
 int gic_v3_its_map_msix(device_t, device_t, int, uint64_t *, uint32_t *);
 
 void lpi_unmask_irq(device_t, uint32_t);
+void lpi_mask_irq(device_t, uint32_t);
 /*
  * GIC Distributor accessors.
  * Notice that only GIC sofc can be passed.

@@ -73,6 +73,8 @@ static int its_init_cpu_collection(struct gic_v3_its_softc *);
 static int its_cmd_send(struct gic_v3_its_softc *, struct its_cmd_desc *);
 
 static void its_cmd_mapc(struct gic_v3_its_softc *, struct its_col *, uint8_t);
+static void its_cmd_mapvi(struct gic_v3_its_softc *, struct its_dev *, uint32_t,
+    uint32_t);
 static void its_cmd_mapi(struct gic_v3_its_softc *, struct its_dev *, uint32_t);
 static void its_cmd_inv(struct gic_v3_its_softc *, struct its_dev *, uint32_t);
 static void its_cmd_invall(struct gic_v3_its_softc *, struct its_col *);
@@ -829,6 +831,22 @@ lpi_unmask_irq(device_t parent, uint32_t irq)
 	KASSERT(0, ("Trying to unmaks not existing LPI: %u\n", irq));
 }
 
+void
+lpi_mask_irq(device_t parent, uint32_t irq)
+{
+	struct its_dev *its_dev;
+
+	TAILQ_FOREACH(its_dev, &its_sc->its_dev_list, entry) {
+		if (irq >= its_dev->lpis.lpi_base &&
+		    irq < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)) {
+			lpi_configure(its_sc, its_dev, irq, 0);
+			return;
+		}
+	}
+
+	KASSERT(0, ("Trying to mask not existing LPI: %u\n", irq));
+}
+
 /*
  * Commands handling.
  */
@@ -865,7 +883,7 @@ cmd_format_id(struct its_cmd *cmd, uint32_t id)
 	cmd->cmd_dword[1] |= id;
 }
 
-static __inline void __unused
+static __inline void
 cmd_format_pid(struct its_cmd *cmd, uint32_t pid)
 {
 	/* Physical ID field: DW1 [63:32] */
@@ -931,6 +949,20 @@ its_cmd_mapc(struct gic_v3_its_softc *sc, struct its_col *col, uint8_t valid)
 }
 
 static void
+its_cmd_mapvi(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
+    uint32_t id, uint32_t pid)
+{
+	struct its_cmd_desc desc;
+
+	desc.cmd_type = ITS_CMD_MAPVI;
+	desc.cmd_desc_mapvi.its_dev = its_dev;
+	desc.cmd_desc_mapvi.id = id;
+	desc.cmd_desc_mapvi.pid = pid;
+
+	its_cmd_send(sc, &desc);
+}
+
+static void __unused
 its_cmd_mapi(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
     uint32_t lpinum)
 {
@@ -963,7 +995,7 @@ its_cmd_inv(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
 	struct its_cmd_desc desc;
 
 	desc.cmd_type = ITS_CMD_INV;
-	desc.cmd_desc_inv.lpinum = lpinum;
+	desc.cmd_desc_inv.lpinum = lpinum - its_dev->lpis.lpi_base;
 	desc.cmd_desc_inv.its_dev = its_dev;
 
 	its_cmd_send(sc, &desc);
@@ -1076,6 +1108,14 @@ its_cmd_prepare(struct its_cmd *cmd, struct its_cmd_desc *desc)
 		cmd_format_col(cmd, desc->cmd_desc_mapc.col->col_id);
 		cmd_format_valid(cmd, desc->cmd_desc_mapc.valid);
 		cmd_format_target(cmd, target);
+		break;
+	case ITS_CMD_MAPVI:
+		target = desc->cmd_desc_mapvi.its_dev->col->col_target;
+		cmd_format_command(cmd, ITS_CMD_MAPVI);
+		cmd_format_devid(cmd, desc->cmd_desc_mapvi.its_dev->devid);
+		cmd_format_id(cmd, desc->cmd_desc_mapvi.id);
+		cmd_format_pid(cmd, desc->cmd_desc_mapvi.pid);
+		cmd_format_col(cmd, desc->cmd_desc_mapvi.its_dev->col->col_id);
 		break;
 	case ITS_CMD_MAPI:
 		target = desc->cmd_desc_mapi.its_dev->col->col_target;
@@ -1287,14 +1327,14 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 
 static void
 lpi_map_to_device(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
-    uint32_t lpinum)
+    uint32_t id, uint32_t pid)
 {
 
-	KASSERT((lpinum >= its_dev->lpis.lpi_base) &&
-		(lpinum < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)),
-		("Trying to map ivalid LPI %u for this device\n", lpinum));
+	KASSERT((pid >= its_dev->lpis.lpi_base) &&
+		(pid < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)),
+		("Trying to map ivalid LPI %u for this device\n", pid));
 
-	its_cmd_mapi(sc, its_dev, lpinum);
+	its_cmd_mapvi(sc, its_dev, id, pid);
 }
 
 int
@@ -1305,6 +1345,7 @@ gic_v3_its_map_msix(device_t dev, device_t pci_dev, int irq, uint64_t *addr,
 	bus_space_handle_t its_bsh;
 	struct its_dev *its_dev;
 	uint64_t its_pa;
+	uint32_t id;
 
 	sc = device_get_softc(dev);
 	/* Verify that this device is allocated and owns this LPI */
@@ -1312,13 +1353,14 @@ gic_v3_its_map_msix(device_t dev, device_t pci_dev, int irq, uint64_t *addr,
 	if (its_dev == NULL)
 		return (EINVAL);
 
-	lpi_map_to_device(sc, its_dev, irq);
+	id = irq - its_dev->lpis.lpi_base;
+	lpi_map_to_device(sc, its_dev, id, irq);
 
 	its_bsh = rman_get_bushandle(&sc->its_res[0]);
 	its_pa = vtophys(its_bsh);
 
 	*addr = (its_pa + GITS_TRANSLATER);
-	*data = irq;
+	*data = id;
 
 	return (0);
 }

@@ -61,6 +61,7 @@ typedef	uint64_t	pt_entry_t;		/* page table entry */
 #define	 ATTR_AP_USER	(1 << 0)
 #define	ATTR_NS		(1 << 5)
 #define	ATTR_IDX(x)	((x) << 2)
+#define	ATTR_IDX_MASK	(7 << 2)
 
 #define	ATTR_DESCR_MASK	3
 

@@ -41,6 +41,10 @@
 	.globl	kernbase
 	.set	kernbase, KERNBASE
 
+#define	DEVICE_MEM	0
+#define	NORMAL_UNCACHED	1
+#define	NORMAL_MEM	2
+
 /*
  * We assume:
  *  MMU      off
@@ -288,7 +292,7 @@ create_pagetables:
 
 	/* Create the kernel space L2 table */
 	mov	x6, x26
-	mov	x7, #1
+	mov	x7, #NORMAL_MEM
 	mov	x8, #(KERNBASE & L2_BLOCK_MASK)
 	mov	x9, x28
 	bl	build_block_pagetable
@@ -307,17 +311,20 @@ create_pagetables:
 	 */
 	add	x27, x26, #PAGE_SIZE
 
+#if defined(SOCDEV_PA) && defined(SOCDEV_VA)
+	/* Create a table for the UART */
+	mov	x6, x27		/* The initial page table */
+	mov	x7, #DEVICE_MEM
+	mov	x8, #(SOCDEV_VA)	/* VA start */
+	mov	x9, #(SOCDEV_PA)	/* PA start */
+	bl	build_section_pagetable
+#endif
+
 	/* Create the VA = PA map */
 	mov	x6, x27		/* The initial page table */
-	mov	x7, #1
+	mov	x7, #NORMAL_UNCACHED /* Uncached as it's only needed early on */
 	mov	x9, x27
 	mov	x8, x9		/* VA start (== PA start) */
-	bl	build_section_pagetable
-
-	/* Create a table for the UART (TODO: Remove) */
-	mov	x7, #0
-	mov	x8, #0x10000000		/* VA start (== PA start) */
-	mov	x9, #0x10000000		/* PA start */
 	bl	build_section_pagetable
 
 	/* Restore the Link register */
@@ -473,12 +480,11 @@ tcr:
 sctlr_set:
 	/* Bits to set */
 	.quad (SCTLR_UCI | SCTLR_nTWE | SCTLR_nTWI | SCTLR_UCT | SCTLR_DZE | \
-	    SCTLR_I | SCTLR_SED | SCTLR_M)
+	    SCTLR_I | SCTLR_SED | SCTLR_C | SCTLR_M)
 sctlr_clear:
 	/* Bits to clear */
 	.quad (SCTLR_EE | SCTLR_EOE | SCTLR_WXN | SCTLR_UMA | SCTLR_ITD | \
-	    SCTLR_THEE | SCTLR_CP15BEN | SCTLR_SA0 | SCTLR_SA | SCTLR_C | \
-	    SCTLR_A)
+	    SCTLR_THEE | SCTLR_CP15BEN | SCTLR_SA0 | SCTLR_SA | SCTLR_A)
 
 	.globl abort
 abort:
@@ -499,6 +505,9 @@ pagetable_l1_ttbr1:
 pagetable_l1_ttbr0:
 	.space	PAGE_SIZE
 pagetable_end:
+
+el2_pagetable:
+	.space	PAGE_SIZE
 
 	.globl init_pt_va
 init_pt_va:

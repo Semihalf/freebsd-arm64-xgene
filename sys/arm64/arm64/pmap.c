@@ -610,6 +610,7 @@ pmap_l3(pmap_t pmap, vm_offset_t va)
  */
 #define	pmap_load_store(table, entry) atomic_swap_64(table, entry)
 #define	pmap_load_clear(table) atomic_swap_64(table, 0)
+#define	pmap_load(table) (*table)
 
 /*
  * Checks if the page is dirty. We currently lack proper tracking of this on
@@ -5079,18 +5080,19 @@ pmap_remove_pages(pmap_t pmap)
 	pmap_free_zero_pages(&free);
 }
 
+/*
+ * This is used to check if a page has been accessed or modified. As we
+ * don't have a bit to see if it has been modified we have to assume it
+ * has been if the page is read/write.
+ */
 static boolean_t
 pmap_page_test_mappings(vm_page_t m, boolean_t accessed, boolean_t modified)
 {
-	panic("pmap_page_test_mappings");
-#if 0
 	struct rwlock *lock;
 	pv_entry_t pv;
-	struct md_page *pvh;
-	pt_entry_t *pte, mask;
-	pt_entry_t PG_A, PG_M, PG_RW, PG_V;
+	pt_entry_t *l3, mask, value;
 	pmap_t pmap;
-	int md_gen, pvh_gen;
+	int md_gen;
 	boolean_t rv;
 
 	rv = FALSE;
@@ -5110,62 +5112,26 @@ restart:
 				goto restart;
 			}
 		}
-		pte = pmap_pte(pmap, pv->pv_va);
+		l3 = pmap_l3(pmap, pv->pv_va);
 		mask = 0;
+		value = 0;
 		if (modified) {
-			PG_M = pmap_modified_bit(pmap);
-			PG_RW = pmap_rw_bit(pmap);
-			mask |= PG_RW | PG_M;
+			mask |= ATTR_AP_RW_BIT;
+			value |= ATTR_AP(ATTR_AP_RW);
 		}
 		if (accessed) {
-			PG_A = pmap_accessed_bit(pmap);
-			PG_V = pmap_valid_bit(pmap);
-			mask |= PG_V | PG_A;
+			mask |= ATTR_AF | ATTR_DESCR_MASK;
+			value |= ATTR_AF | L3_PAGE;
 		}
-		rv = (*pte & mask) == mask;
+		rv = (pmap_load(l3) & mask) == value;
 		PMAP_UNLOCK(pmap);
 		if (rv)
 			goto out;
-	}
-	if ((m->flags & PG_FICTITIOUS) == 0) {
-		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
-		TAILQ_FOREACH(pv, &pvh->pv_list, pv_next) {
-			pmap = PV_PMAP(pv);
-			if (!PMAP_TRYLOCK(pmap)) {
-				md_gen = m->md.pv_gen;
-				pvh_gen = pvh->pv_gen;
-				rw_runlock(lock);
-				PMAP_LOCK(pmap);
-				rw_rlock(lock);
-				if (md_gen != m->md.pv_gen ||
-				    pvh_gen != pvh->pv_gen) {
-					PMAP_UNLOCK(pmap);
-					goto restart;
-				}
-			}
-			pte = pmap_pde(pmap, pv->pv_va);
-			mask = 0;
-			if (modified) {
-				PG_M = pmap_modified_bit(pmap);
-				PG_RW = pmap_rw_bit(pmap);
-				mask |= PG_RW | PG_M;
-			}
-			if (accessed) {
-				PG_A = pmap_accessed_bit(pmap);
-				PG_V = pmap_valid_bit(pmap);
-				mask |= PG_V | PG_A;
-			}
-			rv = (*pte & mask) == mask;
-			PMAP_UNLOCK(pmap);
-			if (rv)
-				goto out;
-		}
 	}
 out:
 	rw_runlock(lock);
 	rw_runlock(&pvh_global_lock);
 	return (rv);
-#endif /* 0 */
 }
 
 /*

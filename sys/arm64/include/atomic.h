@@ -399,6 +399,22 @@ atomic_subtract_64(volatile uint64_t *p, uint64_t val)
 	);
 }
 
+static __inline uint64_t
+atomic_swap_64(volatile uint64_t *p, uint64_t val)
+{
+	uint64_t old;
+	int res;
+
+	__asm __volatile(
+	    "1: ldxr	%0, [%2]      \n"
+	    "   stxr	%w1, %3, [%2] \n"
+            "   cbnz	%w1, 1b       \n"
+	    : "=&r"(old), "=&r"(res), "+r" (p), "+r" (val) : : "cc", "memory"
+	);
+
+	return (old);
+}
+
 #define	atomic_add_long(p, v)		atomic_add_64(		\
     (volatile uint64_t*)p, v)
 #define	atomic_clear_long(p, v)		atomic_clear_64(	\

@@ -705,7 +705,7 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 
 	gicr_xbaser = vtophys(pend_base) |
 	    (cache << GICR_PENDBASER_CACHE_SHIFT) |
-	    (cache << GICR_PENDBASER_SHARE_SHIFT);
+	    (share << GICR_PENDBASER_SHARE_SHIFT);
 
 	gic_r_write(gic_sc, 8, GICR_PENDBASER, gicr_xbaser);
 

@@ -219,9 +219,11 @@ gic_v3_its_detach(device_t dev)
 	device_t parent;
 	struct gic_v3_softc *gic_sc;
 	struct gic_v3_its_softc *sc;
+	u_int cpuid;
 	int rid = 0;
 
 	sc = device_get_softc(dev);
+	cpuid = PCPU_GET(cpuid);
 
 	/* Release what's possible */
 
@@ -240,6 +242,10 @@ gic_v3_its_detach(device_t dev)
 	if ((void *)gic_sc->gic_redists.lpis.conf_base != NULL) {
 		contigfree((void *)gic_sc->gic_redists.lpis.conf_base,
 		    LPI_CONFTAB_SIZE, M_GIC_V3_ITS);
+	}
+	if ((void *)gic_sc->gic_redists.lpis.pend_base[cpuid] != NULL) {
+		contigfree((void *)gic_sc->gic_redists.lpis.pend_base[cpuid],
+		    roundup2(LPI_PENDTAB_SIZE, PAGE_SIZE_64K), M_GIC_V3_ITS);
 	}
 
 	/* Resource... */
@@ -609,8 +615,9 @@ lpi_init_cpu(struct gic_v3_its_softc *sc)
 	 */
 	cpuid = PCPU_GET(cpuid);
 
-	pend_base = (vm_offset_t)contigmalloc(LPI_PENDTAB_SIZE,
-	    M_GIC_V3_ITS, (M_NOWAIT | M_ZERO), 0, ~0UL, PAGE_SIZE_64K, 0);
+	pend_base = (vm_offset_t)contigmalloc(
+	    roundup2(LPI_PENDTAB_SIZE, PAGE_SIZE_64K), M_GIC_V3_ITS,
+	    (M_WAITOK | M_ZERO), 0, ~0UL, PAGE_SIZE_64K, 0);
 
 	KASSERT((vtophys(pend_base) & PAGE_MASK_64K) == 0,
 	    ("LPI Pending Table not aligned to 64 KB"));

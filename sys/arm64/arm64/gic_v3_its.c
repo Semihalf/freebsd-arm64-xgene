@@ -347,7 +347,8 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			    (cache << GITS_BASER_CACHE_SHIFT) |
 			    (share << GITS_BASER_SHARE_SHIFT) |
 			    (psz << GITS_BASER_PSZ_SHIFT) |
-			    ptab_paddr | (nitspages - 1);
+			    ptab_paddr | (nitspages - 1) |
+			    GITS_BASER_VALID;
 
 			gic_its_write(sc, 8, GITS_BASER(tn), gits_baser);
 			/*
@@ -382,10 +383,6 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			its_free_tables(sc);
 			return (ENXIO);
 		}
-
-		/* Works fine so set the valid bit */
-		gits_baser |= GITS_BASER_VALID;
-		gic_its_write(sc, 8, GITS_BASER(tn), gits_baser);
 
 		if (bootverbose) {
 			if (first) {

@@ -89,7 +89,7 @@
 #define	MAXPAGESIZES	1		/* maximum number of supported page sizes */
 
 #ifndef KSTACK_PAGES
-#define KSTACK_PAGES	2	/* pages of kernel stack (with pcb) */
+#define KSTACK_PAGES	4	/* pages of kernel stack (with pcb) */
 #endif
 
 #define KSTACK_GUARD_PAGES	1	/* pages of kstack guard; 0 disables */

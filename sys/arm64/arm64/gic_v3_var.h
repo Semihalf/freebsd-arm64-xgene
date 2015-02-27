@@ -250,12 +250,13 @@ void lpi_mask_irq(device_t, uint32_t);
 	    reg, val);				\
 })
 
-#define	PCI_DEVID(pci_dev)			\
-({						\
-	((pci_get_domain(pci_dev) << 16) |	\
-	 (pci_get_bus(pci_dev) << 8) |		\
-	 (pci_get_slot(pci_dev) << 3) |		\
-	 (pci_get_function(pci_dev) << 0));	\
+#define	PCI_DEVID(pci_dev)				\
+({							\
+	(((pci_get_domain(pci_dev) >> 2) << 19) |	\
+	 ((pci_get_domain(pci_dev) % 4) << 16) |	\
+	 (pci_get_bus(pci_dev) << 8) |			\
+	 (pci_get_slot(pci_dev) << 3) |			\
+	 (pci_get_function(pci_dev) << 0));		\
 })
 
 /*

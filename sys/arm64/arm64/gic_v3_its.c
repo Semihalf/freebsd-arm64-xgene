@@ -310,8 +310,8 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 		    ("%s: Unaligned PA for Interrupt Translation Table",
 		    device_get_name(sc->dev)));
 
-		/* XXX: Keep it non-cacheable and non-bufferable for now. */
-		cache = GITS_BASER_CACHE_NCNB;
+		/* Set defaults: WAWB, IS */
+		cache = GITS_BASER_CACHE_WAWB;
 		share = GITS_BASER_SHARE_IS;
 
 		while (1) {
@@ -376,6 +376,12 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			/* We did what we could */
 			break;
 		}
+		/*
+		 * Do not compare Cacheability field since
+		 * it is implementation defined.
+		 */
+		gits_tmp &= ~GITS_BASER_CACHE_MASK;
+		gits_baser &= ~GITS_BASER_CACHE_MASK;
 
 		if (gits_tmp != gits_baser) {
 			device_printf(sc->dev,
@@ -430,6 +436,7 @@ static int
 its_init_commandq(struct gic_v3_its_softc *sc)
 {
 	uint64_t gits_cbaser, gits_tmp;
+	uint64_t cache, share;
 	vm_paddr_t cmdq_paddr;
 	device_t dev;
 
@@ -446,11 +453,13 @@ its_init_commandq(struct gic_v3_its_softc *sc)
 	KASSERT((cmdq_paddr & GITS_CBASER_PA_MASK) == cmdq_paddr,
 	    ("%s: Unaligned PA for ITS Commands Queue", device_get_name(dev)));
 
+	/* Set defaults: Normal Inner WAWB, IS */
+	cache = GITS_CBASER_CACHE_NIWAWB;
+	share = GITS_CBASER_SHARE_IS;
+
 	gits_cbaser = (cmdq_paddr |
-	    /* XXX: Leave it uncacheable for now */
-	    (GITS_CBASER_CACHE_NIN << GITS_CBASER_CACHE_SHIFT) |
-	    /* Inner shareable */
-	    (GITS_CBASER_SHARE_IS << GITS_CBASER_SHARE_SHIFT) |
+	    (cache << GITS_CBASER_CACHE_SHIFT) |
+	    (share << GITS_CBASER_SHARE_SHIFT) |
 	    /* Number of 4KB pages - 1 */
 	    (ITS_CMDQ_SIZE / (1 << 12) - 1) |
 	    /* Valid bit */
@@ -678,8 +687,8 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	 */
 	idbits = flsl(LPI_CONFTAB_SIZE + 8192) - 1;
 
-	/* XXX: Keep it non-cacheable and inner shareable for now. */
-	cache = GICR_PROPBASER_CACHE_NIN;
+	/* Set defaults: Normal Inner WAWB, IS */
+	cache = GICR_PROPBASER_CACHE_NIWAWB;
 	share = GICR_PROPBASER_SHARE_IS;
 
 	gicr_xbaser = vtophys(conf_base) |
@@ -703,8 +712,8 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	 * Set GICR_PENDBASER
 	 */
 
-	/* XXX: Keep it non-cacheable and inner shareable for now. */
-	cache = GICR_PENDBASER_CACHE_NIN;
+	/* Set defaults: Normal Inner WAWB, IS */
+	cache = GICR_PENDBASER_CACHE_NIWAWB;
 	share = GICR_PENDBASER_SHARE_IS;
 
 	gicr_xbaser = vtophys(pend_base) |

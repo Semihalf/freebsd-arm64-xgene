@@ -262,7 +262,7 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 {
 	uint64_t gits_baser, gits_tmp;
 	uint64_t type, esize, cache, share, psz;
-	uint32_t gits_typer;
+	uint64_t gits_typer;
 	size_t page_size, npages, nitspages, nidents, tn;
 	size_t its_tbl_size;
 	vm_offset_t ptab_vaddr;
@@ -272,7 +272,7 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 	page_size = PAGE_SIZE_64K;
 
 	/* Read features first */
-	gits_typer = gic_its_read(sc, 4, GITS_TYPER);
+	gits_typer = gic_its_read(sc, 8, GITS_TYPER);
 
 	for (tn = 0; tn < GITS_BASER_NUM; tn++) {
 		gits_baser = gic_its_read(sc, 8, GITS_BASER(tn));
@@ -287,7 +287,7 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 		case GITS_BASER_TYPE_RES7:
 			continue;
 		case GITS_BASER_TYPE_DEV:
-			nidents = (1 << GITS_TYPER_DEVB(gits_typer)) - 1;
+			nidents = (1 << GITS_TYPER_DEVB(gits_typer));
 			its_tbl_size = esize * nidents;
 			its_tbl_size = roundup2(its_tbl_size, page_size);
 			npages = howmany(its_tbl_size, PAGE_SIZE);
@@ -1088,6 +1088,7 @@ its_cmd_prepare(struct its_cmd *cmd, struct its_cmd_desc *desc)
 {
 	uint64_t target;
 	uint8_t cmd_type;
+	u_int size;
 	boolean_t error;
 
 	error = FALSE;
@@ -1104,8 +1105,19 @@ its_cmd_prepare(struct its_cmd *cmd, struct its_cmd_desc *desc)
 		target = desc->cmd_desc_mapd.its_dev->col->col_target;
 		cmd_format_command(cmd, ITS_CMD_MAPD);
 		cmd_format_itt(cmd, vtophys(desc->cmd_desc_mapd.its_dev->itt));
-		cmd_format_size(cmd,
-		    (1 << (desc->cmd_desc_mapd.its_dev->lpis.lpi_num - 1)) - 1);
+		/*
+		 * Size describes number of bits to encode interrupt IDs
+		 * supported by the device minus one.
+		 * When V (valid) bit is zero, this field should be written
+		 * as zero.
+		 */
+		if (desc->cmd_desc_mapd.valid) {
+			size =
+			    MAX(1, flsl(desc->cmd_desc_mapd.its_dev->lpis.lpi_num)) - 1;
+		} else
+			size = 0;
+
+		cmd_format_size(cmd, size);
 		cmd_format_devid(cmd, desc->cmd_desc_mapd.its_dev->devid);
 		cmd_format_valid(cmd, desc->cmd_desc_mapd.valid);
 		break;

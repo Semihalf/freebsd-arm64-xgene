@@ -254,9 +254,6 @@ gic_v3_its_detach(device_t dev)
 	return (0);
 }
 
-/* XXX: Currently assume that page size is 4 KB */
-CTASSERT(PAGE_SIZE == (1 << 12));
-
 static int
 its_alloc_tables(struct gic_v3_its_softc *sc)
 {

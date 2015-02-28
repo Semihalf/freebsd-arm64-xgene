@@ -881,8 +881,8 @@ static __inline void
 cmd_format_size(struct its_cmd *cmd, uint16_t size)
 {
 	/* Size field: DW1 [4:0] */
-	cmd->cmd_dword[1] &= ~0x1FUL;
-	cmd->cmd_dword[1] |= (size & 0x1F);
+	cmd->cmd_dword[1] &= ~0xFFUL;
+	cmd->cmd_dword[1] |= (size & 0xFF);
 }
 
 static __inline void

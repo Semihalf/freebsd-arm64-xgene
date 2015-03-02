@@ -1,0 +1,25 @@
+FAT template boot filesystem created by generate-fat.sh
+DO NOT EDIT
+$FreeBSD: head/sys/boot/amd64/boot1.efi/generate-fat.sh 278304 2015-02-06 01:42:17Z rpaulo $
+begin 644 fat.tmpl.bz2
+M0EIH.3%!629362+VO40`&T!_____ZZKJ[_^N_ZO^J_Z[OJ_NJ^JK^KZO[NNJ
+MZNKN[OJ^P`+\`!U0"!H:-`,(#0:!@0`&@-,@-`8!`9--```-,$TTP0&31D&C
+M"``R&$-,A`T-&@&$!H-`P(`#0&F0&@,`@,FF@``&F"::8(#)HR#1A``9#"&F
+M0-1"$TT````````T!H```&@````:````:```````"J2B'Y%(GD:3TF1H>HVH
+M&@:#)D`T#(`:::`#0#U`:!H:9`&FC(,)C4:>IIDTP&IZ3PFFFIR;-I+1KRVM
+M1E9+6VL(1DI(B$69!$1$&+45RB(00A@RA;Q$H@$(:&[6(92\O%O:,\F[9X"T
+M>4\)ZKWE\US8OF;=@-PX+A,-G%Q>2;J3/(S5@B!"%[+F<W196K3+MF&77*X9
+M10YM*4BI4L5*E2I4M5%+"2BBBBBBI514DJ2J5*E2IB6RB2BBBBBC*IJ)****
+M**/:IH[^Q%:M6K5JU:9----------------U$24444444333333333)IIIII
+MIK?07U:M6K5JU:M-MY*******)DTTTTTTV9Z>71V.EMW7M[RZ)22P[#>21<^
+M-HDUG2I-.E'EI/4:MK7V-FW#`;]QF*U-N%]EXU!I(`+-IJ9$`+K6_'K^RE:Q
+M`#-NL@YZ3K9+S6V%PMMK)E[1R+UG[K(NK17ZVJLL[)&-)<R:AY+5+Y[KY&<;
+M!^;<,!OW$?\QUXNLTTN<9=?=0!89S^ES'AD$(0J8`PA#`B`*"4I0F%`#4@5R
+M@YS/81XRXMGX2&=D>PU;6+E]+8MFVK=/X?VX3!8K1-.S/=N:B"D!%,X'%">"
+M*E-&H4+SP@-"@41$H8%'.:VD^$@0YZ(T)U*+QTJ%.JAIJ6EDRTDDFJD^=Z;8
+M-D_)MFW7[`;UP7%83&<E]QN^)80S?FV%W$;G9.-$1(BS(S3;-R])NUZO6^<!
+MPV"PF(QV0[]EI#MY.5(OS0R;22VLR1M(BRNY,:2,!O&^;]P&D<)QF$PVT8S'
+M:QTCC_+P$>_)'!R.'9,2_$I(<5WS_6$X[8L-B,5R&.W;(<IDLP<F1DR9$G#T
+GE@S^OR<=M7GV&=DBQH(@$(2@`R;*S)^R3!1@O_%W)%.%"0(O:]1`
+`
+end

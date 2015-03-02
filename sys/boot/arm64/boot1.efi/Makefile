@@ -53,11 +53,11 @@ boot1.o: ${.CURDIR}/../../common/ufsread.c
 # The following inserts out objects into a template FAT file system
 # created by generate-fat.sh
 
-.include "${.CURDIR}/../../amd64/boot1.efi/Makefile.fat"
+.include "${.CURDIR}/Makefile.fat"
 
 boot1.efifat: boot1.efi
 	echo ${.OBJDIR}
-	uudecode ${.CURDIR}/../../amd64/boot1.efi/fat.tmpl.bz2.uu
+	uudecode ${.CURDIR}/fat.tmpl.bz2.uu
 	mv fat.tmpl.bz2 ${.TARGET}.bz2
 	bzip2 -f -d ${.TARGET}.bz2
 	dd if=boot1.efi of=${.TARGET} seek=${BOOT1_OFFSET} conv=notrunc

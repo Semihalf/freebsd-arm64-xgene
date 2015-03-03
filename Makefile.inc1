@@ -1471,6 +1471,10 @@ _elftctools=	lib/libelftc \
 # cross-build on a FreeBSD 10 host:
 _elftctools+=	usr.bin/addr2line
 .endif
+.elif ${TARGET_ARCH} != ${MACHINE_ARCH} && ${MK_ELFTOOLCHAIN_TOOLS} != "no"
+# A cross-strip is not passed in WMAKEENV, so build elfcopy/strip.
+_elftctools=	lib/libelftc \
+		usr.bin/elfcopy
 .endif
 
 # If an full path to an external cross compiler is given, don't build

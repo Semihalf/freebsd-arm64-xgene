@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include <machine/bus.h>
+#include <machine/cpu.h>
 
 uint8_t  generic_bs_r_1(void *, bus_space_handle_t, bus_size_t);
 uint16_t generic_bs_r_2(void *, bus_space_handle_t, bus_size_t);
@@ -87,6 +88,11 @@ static void
 generic_bs_barrier(void *t, bus_space_handle_t bsh, bus_size_t offset,
     bus_size_t size, int flags)
 {
+	/* ARM64TODO:
+	 * dsb() is full system barrier, replace with suitable weaker one.
+	 * Do we also need to drain L2 write buffer?
+	 */
+	dsb();
 }
 
 static int

@@ -311,8 +311,12 @@ static device_method_t gic_v3_its_methods[] = {
 	DEVMETHOD(device_attach,	gic_v3_its_fdt_attach),
 
 	/* PIC interface */
+	/* MSI-X */
 	DEVMETHOD(pic_alloc_msix,	gic_v3_its_alloc_msix),
 	DEVMETHOD(pic_map_msix,		gic_v3_its_map_msix),
+	/* MSI */
+	DEVMETHOD(pic_alloc_msi,	gic_v3_its_alloc_msi),
+	DEVMETHOD(pic_map_msi,		gic_v3_its_map_msix),
 
 	/* End */
 	DEVMETHOD_END

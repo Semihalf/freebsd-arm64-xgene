@@ -1265,12 +1265,11 @@ its_device_find(struct gic_v3_its_softc *sc, device_t pci_dev)
 }
 
 static struct its_dev *
-its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev)
+its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev, u_int nvecs)
 {
 	struct its_dev	*newdev;
 	uint64_t typer;
 	uint32_t devid;
-	u_int nvecs;
 	u_int cpuid;
 	size_t esize;
 
@@ -1280,7 +1279,6 @@ its_device_alloc(struct gic_v3_its_softc *sc, device_t pci_dev)
 		return (newdev);
 
 	devid = PCI_DEVID(pci_dev);
-	nvecs = PCI_MSIX_NUM(pci_dev);
 
 	/* There was no previously created device. Create one now */
 	newdev = malloc(sizeof(*newdev), M_GIC_V3_ITS, M_WAITOK | M_ZERO);
@@ -1343,17 +1341,43 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 {
 	struct gic_v3_its_softc *sc;
 	struct its_dev *its_dev;
+	u_int nvecs;
 
 	sc = device_get_softc(dev);
+
+	nvecs = PCI_MSIX_NUM(pci_dev);
+
 	/*
 	 * TODO: Allocate device as seen by ITS if not already available.
 	 *	 Notice that MSI-X interrupts are allocated on one-by-one basis.
 	 */
-	its_dev = its_device_alloc(sc, pci_dev);
+	its_dev = its_device_alloc(sc, pci_dev, nvecs);
 	if (its_dev == NULL)
 		return (ENOMEM);
 
 	its_device_asign_lpi(its_dev, irq);
+
+	return (0);
+}
+
+int
+gic_v3_its_alloc_msi(device_t dev, device_t pci_dev, int count, int *irqs)
+{
+	struct gic_v3_its_softc *sc;
+	struct its_dev *its_dev;
+
+	sc = device_get_softc(dev);
+
+	/* Allocate device as seen by ITS if not already available. */
+	its_dev = its_device_alloc(sc, pci_dev, count);
+	if (its_dev == NULL) {
+		return (ENOMEM);
+	}
+
+	for (; count > 0; count--) {
+		its_device_asign_lpi(its_dev, irqs);
+		irqs++;
+	}
 
 	return (0);
 }

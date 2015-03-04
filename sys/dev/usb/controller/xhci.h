@@ -446,7 +446,7 @@ union xhci_hub_desc {
 
 typedef int (xhci_port_route_t)(device_t, uint32_t, uint32_t);
 
-struct xhci_softc {
+typedef struct xhci_softc {
 	struct xhci_hw_softc	sc_hw;
 	/* base device */
 	struct usb_bus		sc_bus;
@@ -512,13 +512,14 @@ struct xhci_softc {
 
 	/* vendor string for root HUB */
 	char			sc_vendor[16];
-};
+} xhci_softc_t;
 
 #define	XHCI_CMD_LOCK(sc)	sx_xlock(&(sc)->sc_cmd_sx)
 #define	XHCI_CMD_UNLOCK(sc)	sx_xunlock(&(sc)->sc_cmd_sx)
 #define	XHCI_CMD_ASSERT_LOCKED(sc) sx_assert(&(sc)->sc_cmd_sx, SA_LOCKED)
 
 /* prototypes */
+usb_bus_mem_cb_t xhci_iterate_hw_softc;
 
 uint8_t 	xhci_use_polling(void);
 usb_error_t xhci_halt_controller(struct xhci_softc *);

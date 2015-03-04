@@ -206,7 +206,7 @@ xhci_use_polling(void)
 #endif
 }
 
-static void
+void
 xhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_cb_t *cb)
 {
 	struct xhci_softc *sc = XHCI_BUS2SC(bus);

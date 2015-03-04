@@ -825,36 +825,47 @@ lpi_configure(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
 	its_cmd_inv(sc, its_dev, lpinum);
 }
 
-void
-lpi_unmask_irq(device_t parent, uint32_t irq)
+static void
+lpi_map_to_device(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
+    uint32_t id, uint32_t pid)
+{
+
+	KASSERT((pid >= its_dev->lpis.lpi_base) &&
+		(pid < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)),
+		("Trying to map ivalid LPI %u for this device\n", pid));
+
+	its_cmd_mapvi(sc, its_dev, id, pid);
+}
+
+static void
+lpi_xmask_irq(device_t parent, uint32_t irq, boolean_t unmask)
 {
 	struct its_dev *its_dev;
 
 	TAILQ_FOREACH(its_dev, &its_sc->its_dev_list, entry) {
 		if (irq >= its_dev->lpis.lpi_base &&
 		    irq < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)) {
-			lpi_configure(its_sc, its_dev, irq, 1);
+			lpi_configure(its_sc, its_dev, irq, unmask);
 			return;
 		}
 	}
 
-	KASSERT(0, ("Trying to unmaks not existing LPI: %u\n", irq));
+	KASSERT(0, ("Trying to %s not existing LPI: %u\n",
+	    (unmask == TRUE) ? "unmask" : "mask", irq));
+}
+
+void
+lpi_unmask_irq(device_t parent, uint32_t irq)
+{
+
+	lpi_xmask_irq(parent, irq, 1);
 }
 
 void
 lpi_mask_irq(device_t parent, uint32_t irq)
 {
-	struct its_dev *its_dev;
 
-	TAILQ_FOREACH(its_dev, &its_sc->its_dev_list, entry) {
-		if (irq >= its_dev->lpis.lpi_base &&
-		    irq < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)) {
-			lpi_configure(its_sc, its_dev, irq, 0);
-			return;
-		}
-	}
-
-	KASSERT(0, ("Trying to mask not existing LPI: %u\n", irq));
+	lpi_xmask_irq(parent, irq, 0);
 }
 
 /*
@@ -1345,18 +1356,6 @@ gic_v3_its_alloc_msix(device_t dev, device_t pci_dev, int *irq)
 	its_device_asign_lpi(its_dev, irq);
 
 	return (0);
-}
-
-static void
-lpi_map_to_device(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
-    uint32_t id, uint32_t pid)
-{
-
-	KASSERT((pid >= its_dev->lpis.lpi_base) &&
-		(pid < (its_dev->lpis.lpi_base + its_dev->lpis.lpi_num)),
-		("Trying to map ivalid LPI %u for this device\n", pid));
-
-	its_cmd_mapvi(sc, its_dev, id, pid);
 }
 
 int

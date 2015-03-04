@@ -336,7 +336,8 @@ its_alloc_tables(struct gic_v3_its_softc *sc)
 			gits_baser &= ~(GITS_BASER_VALID |
 			    GITS_BASER_CACHE_MASK | GITS_BASER_TYPE_MASK |
 			    GITS_BASER_ESIZE_MASK | GITS_BASER_PA_MASK |
-			    GITS_BASER_SHARE_MASK | GITS_BASER_PSZ_MASK);
+			    GITS_BASER_SHARE_MASK | GITS_BASER_PSZ_MASK |
+			    GITS_BASER_SIZE_MASK);
 			/* Construct register value */
 			gits_baser |=
 			    (type << GITS_BASER_TYPE_SHIFT) |

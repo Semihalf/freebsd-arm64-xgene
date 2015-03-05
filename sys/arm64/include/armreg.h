@@ -53,6 +53,9 @@
 #define	CTR_DLINE_SHIFT		16
 #define	CTR_DLINE_MASK		(0xf << CTR_DLINE_SHIFT)
 #define	CTR_DLINE_SIZE(reg)	(((reg) & CTR_DLINE_MASK) >> CTR_DLINE_SHIFT)
+#define	CTR_ILINE_SHIFT		0
+#define	CTR_ILINE_MASK		(0xf << CTR_ILINE_SHIFT)
+#define	CTR_ILINE_SIZE(reg)	(((reg) & CTR_ILINE_MASK) >> CTR_ILINE_SHIFT)
 
 /* ESR_ELx */
 #define	ESR_ELx_ISS_MASK	0x00ffffff

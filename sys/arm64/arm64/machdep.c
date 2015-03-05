@@ -103,6 +103,10 @@ u_int physmap_idx;
 
 struct kva_md_info kmi;
 
+int64_t dcache_line_size;	/* The minimum D cache line size */
+int64_t icache_line_size;	/* The minimum I cache line size */
+int64_t idcache_line_size;	/* The minimum cache line size */
+
 static void
 cpu_startup(void *dummy)
 {
@@ -771,6 +775,26 @@ try_load_dtb(caddr_t kmdp)
 }
 #endif
 
+static void
+cache_setup(void)
+{
+	int dcache_line_shift, icache_line_shift;
+	uint32_t ctr_el0;
+
+	ctr_el0 = READ_SPECIALREG(ctr_el0);
+
+	/* Read the log2 words in each D cache line */
+	dcache_line_shift = CTR_DLINE_SIZE(ctr_el0);
+	/* Get the D cache line size */
+	dcache_line_size = sizeof(int) << dcache_line_shift;
+
+	/* And the same for the I cache */
+	icache_line_shift = CTR_ILINE_SIZE(ctr_el0);
+	icache_line_size = sizeof(int) << icache_line_shift;
+
+	idcache_line_size = MIN(dcache_line_size, icache_line_size);
+}
+
 void
 initarm(struct arm64_bootparams *abp)
 {
@@ -821,6 +845,8 @@ initarm(struct arm64_bootparams *abp)
 
 	/* Do basic tuning, hz etc */
 	init_param1();
+
+	cache_setup();
 
 	/* Bootstrap enough of pmap  to enter the kernel proper */
 	pmap_bootstrap(abp->kern_l1pt, KERNBASE - abp->kern_delta,

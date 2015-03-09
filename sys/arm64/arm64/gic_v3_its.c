@@ -878,31 +878,31 @@ static __inline void
 cmd_format_command(struct its_cmd *cmd, uint8_t cmd_type)
 {
 	/* Command field: DW0 [7:0] */
-	cmd->cmd_dword[0] &= ~0xFFUL;
-	cmd->cmd_dword[0] |= cmd_type & 0xFF;
+	cmd->cmd_dword[0] &= ~CMD_COMMAND_MASK;
+	cmd->cmd_dword[0] |= cmd_type;
 }
 
 static __inline void
 cmd_format_devid(struct its_cmd *cmd, uint32_t devid)
 {
 	/* Device ID field: DW0 [63:32] */
-	cmd->cmd_dword[0] &= ~(0xFFFFFFFFUL << 32);
-	cmd->cmd_dword[0] |= ((uint64_t)devid << 32);
+	cmd->cmd_dword[0] &= ~CMD_DEVID_MASK;
+	cmd->cmd_dword[0] |= ((uint64_t)devid << CMD_DEVID_SHIFT);
 }
 
 static __inline void
 cmd_format_size(struct its_cmd *cmd, uint16_t size)
 {
 	/* Size field: DW1 [4:0] */
-	cmd->cmd_dword[1] &= ~0xFFUL;
-	cmd->cmd_dword[1] |= (size & 0xFF);
+	cmd->cmd_dword[1] &= ~CMD_SIZE_MASK;
+	cmd->cmd_dword[1] |= (size & CMD_SIZE_MASK);
 }
 
 static __inline void
 cmd_format_id(struct its_cmd *cmd, uint32_t id)
 {
 	/* ID field: DW1 [31:0] */
-	cmd->cmd_dword[1] &= ~0xFFFFFFFFUL;
+	cmd->cmd_dword[1] &= ~CMD_ID_MASK;
 	cmd->cmd_dword[1] |= id;
 }
 
@@ -910,15 +910,15 @@ static __inline void
 cmd_format_pid(struct its_cmd *cmd, uint32_t pid)
 {
 	/* Physical ID field: DW1 [63:32] */
-	cmd->cmd_dword[1] &= ~(0xFFFFFFFFUL << 32);
-	cmd->cmd_dword[1] |= ((uint64_t)pid << 32);
+	cmd->cmd_dword[1] &= ~CMD_PID_MASK;
+	cmd->cmd_dword[1] |= ((uint64_t)pid << CMD_PID_SHIFT);
 }
 
 static __inline void
 cmd_format_col(struct its_cmd *cmd, uint16_t col_id)
 {
 	/* Collection field: DW2 [16:0] */
-	cmd->cmd_dword[2] &= ~0xFFFFUL;
+	cmd->cmd_dword[2] &= ~CMD_COL_MASK;
 	cmd->cmd_dword[2] |= col_id;
 }
 
@@ -926,24 +926,24 @@ static __inline void
 cmd_format_target(struct its_cmd *cmd, uint64_t target)
 {
 	/* Target Address field: DW2 [47:16] */
-	cmd->cmd_dword[2] &= ~(0xFFFFFFFFUL << 16);
-	cmd->cmd_dword[2] |= (target & (0xFFFFFFFFUL << 16));
+	cmd->cmd_dword[2] &= ~CMD_TARGET_MASK;
+	cmd->cmd_dword[2] |= (target & CMD_TARGET_MASK);
 }
 
 static __inline void
 cmd_format_itt(struct its_cmd *cmd, uint64_t itt)
 {
 	/* ITT Address field: DW2 [47:8] */
-	cmd->cmd_dword[2] &= ~0xFFFFFFFFFF00UL;
-	cmd->cmd_dword[2] |= (itt & 0xFFFFFFFFFF00UL);
+	cmd->cmd_dword[2] &= ~CMD_ITT_MASK;
+	cmd->cmd_dword[2] |= (itt & CMD_ITT_MASK);
 }
 
 static __inline void
 cmd_format_valid(struct its_cmd *cmd, uint8_t valid)
 {
 	/* Valid field: DW2 [63] */
-	cmd->cmd_dword[2] &= ~(1UL << 63);
-	cmd->cmd_dword[2] |= ((uint64_t)valid << 63);
+	cmd->cmd_dword[2] &= ~CMD_VALID_MASK;
+	cmd->cmd_dword[2] |= ((uint64_t)valid << CMD_VALID_SHIFT);
 }
 
 static __inline void

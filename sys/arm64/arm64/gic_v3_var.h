@@ -131,13 +131,36 @@ struct its_cmd {
 	uint64_t	cmd_dword[4];	/* ITS command double word */
 };
 
-#define	ITS_CMD_SYNC	(0x05)
-#define	ITS_CMD_MAPD	(0x08)
-#define	ITS_CMD_MAPC	(0x09)
-#define	ITS_CMD_MAPVI	(0x0a)
-#define	ITS_CMD_MAPI	(0x0b)
-#define	ITS_CMD_INV	(0x0c)
-#define	ITS_CMD_INVALL	(0x0d)
+/* ITS commands encoding */
+#define	ITS_CMD_SYNC		(0x05)
+#define	ITS_CMD_MAPD		(0x08)
+#define	ITS_CMD_MAPC		(0x09)
+#define	ITS_CMD_MAPVI		(0x0a)
+#define	ITS_CMD_MAPI		(0x0b)
+#define	ITS_CMD_INV		(0x0c)
+#define	ITS_CMD_INVALL		(0x0d)
+/* Command */
+#define	CMD_COMMAND_MASK	(0xFFUL)
+/* PCI device ID */
+#define	CMD_DEVID_SHIFT		(32)
+#define	CMD_DEVID_MASK		(0xFFFFFFFFUL << CMD_DEVID_SHIFT)
+/* Size of IRQ ID bitfield */
+#define	CMD_SIZE_MASK		(0xFFUL)
+/* Virtual LPI ID */
+#define	CMD_ID_MASK		(0xFFFFFFFFUL)
+/* Physical LPI ID */
+#define	CMD_PID_SHIFT		(32)
+#define	CMD_PID_MASK		(0xFFFFFFFFUL << CMD_PID_SHIFT)
+/* Collection */
+#define	CMD_COL_MASK		(0xFFFFUL)
+/* Target (CPU or Re-Distributor) */
+#define	CMD_TARGET_SHIFT	(16)
+#define	CMD_TARGET_MASK		(0xFFFFFFFFUL << CMD_TARGET_SHIFT)
+/* Interrupt Translation Table address */
+#define	CMD_ITT_MASK		(0xFFFFFFFFFF00UL)
+/* Valid command bit */
+#define	CMD_VALID_SHIFT		(63)
+#define	CMD_VALID_MASK		(1UL << CMD_VALID_SHIFT)
 
 /*
  * ITS command descriptor.

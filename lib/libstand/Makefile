@@ -87,7 +87,6 @@ SRCS+=	aeabi_memcmp.S aeabi_memcpy.S aeabi_memmove.S aeabi_memset.S
 .if ${MACHINE_CPUARCH} == "powerpc"
 .PATH: ${.CURDIR}/../libc/quad
 SRCS+=	ashldi3.c ashrdi3.c
-.PATH: ${.CURDIR}/../libc/powerpc/gen
 SRCS+=	syncicache.c
 .endif
 
@@ -96,11 +95,7 @@ SRCS+=	syncicache.c
 SRCS+= uuid_equal.c uuid_is_nil.c
 
 # _setjmp/_longjmp
-.if ${MACHINE_ARCH} == "powerpc64"
-.PATH: ${.CURDIR}/powerpc
-.else
 .PATH: ${.CURDIR}/${MACHINE_CPUARCH}
-.endif
 SRCS+=	_setjmp.S
 
 # decompression functionality from libbz2

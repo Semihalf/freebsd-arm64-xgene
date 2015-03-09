@@ -679,11 +679,12 @@ lpi_config_cpu(struct gic_v3_its_softc *sc)
 	/*
 	 * Find out how many bits do we need for LPI identifiers.
 	 * Remark 1.: Even though we have (LPI_CONFTAB_SIZE / 8) LPIs
-	 *	      the notified LPI ID still starts from 8192.
+	 *	      the notified LPI ID still starts from 8192
+	 *	      (GIC_FIRST_LPI).
 	 * Remark 2.: This could be done on compilation time but there
 	 *	      seems to be no sufficient macro.
 	 */
-	idbits = flsl(LPI_CONFTAB_SIZE + 8192) - 1;
+	idbits = flsl(LPI_CONFTAB_SIZE + GIC_FIRST_LPI) - 1;
 
 	/* Set defaults: Normal Inner WAWB, IS */
 	cache = GICR_PROPBASER_CACHE_NIWAWB;
@@ -744,7 +745,7 @@ lpi_bitmap_init(struct gic_v3_its_softc *sc)
 
 	lpi_id_num = (1 << gic_sc->gic_idbits) - 1;
 	/* Substract IDs dedicated for SGIs, PPIs and SPIs */
-	lpi_id_num -= 8192;
+	lpi_id_num -= GIC_FIRST_LPI;
 
 	sc->its_lpi_maxid = lpi_id_num;
 
@@ -790,7 +791,7 @@ retry:
 	}
 	/* This area is free. Take it. */
 	bit_nset(bitmap, fclr, fclr + nvecs - 1);
-	lpic->lpi_base = fclr + 8192;
+	lpic->lpi_base = fclr + GIC_FIRST_LPI;
 	lpic->lpi_num = nvecs;
 	lpic->lpi_free = lpic->lpi_num;
 
@@ -809,7 +810,7 @@ lpi_configure(struct gic_v3_its_softc *sc, struct its_dev *its_dev,
 	gic_sc = device_get_softc(parent);
 
 	conf_byte = (uint8_t *)gic_sc->gic_redists.lpis.conf_base;
-	conf_byte += (lpinum - 8192);
+	conf_byte += (lpinum - GIC_FIRST_LPI);
 
 	if (unmask)
 		*conf_byte |= LPI_CONF_ENABLE;

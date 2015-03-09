@@ -218,13 +218,13 @@ gic_v3_dispatch(device_t dev, struct trapframe *frame)
 		if (__predict_false(active_irq == ICC_IAR1_EL1_SPUR))
 			break;
 
-		if (__predict_true((active_irq > 15 && active_irq < 1020) ||
-		    active_irq >= 8192)) {
+		if (__predict_true((active_irq >= GIC_FIRST_PPI &&
+		    active_irq <= GIC_LAST_SPI) || active_irq >= GIC_FIRST_LPI)) {
 			arm_dispatch_intr(active_irq, frame);
 			continue;
 		}
 
-		if (active_irq < 16) {
+		if (active_irq <= GIC_LAST_SGI) {
 			/*
 			 * TODO: Implement proper SGI handling.
 			 *	Mask it if such is received for some reason.
@@ -252,14 +252,14 @@ gic_v3_mask_irq(device_t dev, u_int irq)
 
 	mask = (1 << (irq % 32));
 
-	if (irq < 32) { /* SGIs and PPIs in corresponding Re-Distributor */
+	if (irq < GIC_FIRST_SPI) { /* SGIs and PPIs in corresponding Re-Distributor */
 		gic_r_write(sc, 4,
 		    PAGE_SIZE_64K + GICD_ICENABLER(irq >> 5), mask);
 		gic_v3_wait_for_rwp(sc, REDIST);
-	} else if (irq >= 32 && irq < 8192) { /* SPIs in distributor */
+	} else if (irq >= GIC_FIRST_SPI && irq < GIC_LAST_SPI) { /* SPIs in distributor */
 		gic_r_write(sc, 4, GICD_ICENABLER(irq >> 5), mask);
 		gic_v3_wait_for_rwp(sc, DIST);
-	} else if (irq >= 8192) { /* LPIs */
+	} else if (irq >= GIC_FIRST_LPI) { /* LPIs */
 		lpi_mask_irq(dev, irq);
 	} else {
 		KASSERT(0, ("%s: Unsupported IRQ number %u", __func__, irq));
@@ -277,14 +277,14 @@ gic_v3_unmask_irq(device_t dev, u_int irq)
 
 	mask = (1 << (irq % 32));
 
-	if (irq < 32) { /* SGIs and PPIs in corresponding Re-Distributor */
+	if (irq < GIC_FIRST_SPI) { /* SGIs and PPIs in corresponding Re-Distributor */
 		gic_r_write(sc, 4,
 		    PAGE_SIZE_64K + GICD_ISENABLER(irq >> 5), mask);
 		gic_v3_wait_for_rwp(sc, REDIST);
-	} else if (irq >= 32 && irq < 8192) { /* SPIs in distributor */
+	} else if (irq >= GIC_FIRST_SPI && irq < GIC_LAST_SPI) { /* SPIs in distributor */
 		gic_d_write(sc, 4, GICD_ISENABLER(irq >> 5), mask);
 		gic_v3_wait_for_rwp(sc, DIST);
-	} else if (irq >= 8192) { /* LPIs */
+	} else if (irq >= GIC_FIRST_LPI) { /* LPIs */
 		lpi_unmask_irq(dev, irq);
 	} else {
 		KASSERT(0, ("%s: Unsupported IRQ number %u", __func__, irq));

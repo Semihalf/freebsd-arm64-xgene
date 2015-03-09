@@ -459,15 +459,7 @@ gic_v3_redist_find(struct gic_v3_softc *sc)
 
 	/* Allocate struct resource for this CPU's Re-Distributor registers */
 	sc->gic_redists.pcpu[cpuid] =
-	    malloc(sizeof(*sc->gic_redists.pcpu), M_GIC_V3, M_WAITOK);
-	if (sc->gic_redists.pcpu[cpuid] == NULL) {
-		if (bootverbose) {
-			device_printf(sc->dev,
-			    "Could not allocate memory for CPU%u "
-			    "Re-Distributor resource description\n", cpuid);
-		}
-		return (ENOMEM);
-	}
+	    malloc(sizeof(*sc->gic_redists.pcpu[0]), M_GIC_V3, M_WAITOK);
 
 	aff = CPU_AFFINITY(cpuid);
 	/* Affinity in format for comparison with typer */

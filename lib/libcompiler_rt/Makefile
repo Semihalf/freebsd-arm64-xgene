@@ -58,14 +58,12 @@ SRCF=	absvdi2 \
 	fixdfti \
 	fixsfdi \
 	fixsfti \
-	fixtfsi \
 	fixunsdfdi \
 	fixunsdfsi \
 	fixunsdfti \
 	fixunssfdi \
 	fixunssfsi \
 	fixunssfti \
-	fixunstfsi \
 	fixunsxfdi \
 	fixunsxfsi \
 	fixunsxfti \

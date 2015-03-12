@@ -123,6 +123,12 @@ static const struct cpu_parts cpu_parts_cavium[] = {
 	CPU_PART_NONE,
 };
 
+/* AppliedMicro */
+static const struct cpu_parts cpu_parts_apm[] = {
+	{ 0x000, "Potenza" },
+	CPU_PART_NONE,
+};
+
 /* Unknown */
 static const struct cpu_parts cpu_parts_none[] = {
 	CPU_PART_NONE,
@@ -139,7 +145,7 @@ const struct cpu_implementers cpu_implementers[] = {
 	{ CPU_IMPL_INFINEON,	"IFX",		cpu_parts_none },
 	{ CPU_IMPL_FREESCALE,	"Freescale",	cpu_parts_none },
 	{ CPU_IMPL_NVIDIA,	"NVIDIA",	cpu_parts_none },
-	{ CPU_IMPL_APM,		"APM",		cpu_parts_none },
+	{ CPU_IMPL_APM,		"APM",		cpu_parts_apm },
 	{ CPU_IMPL_QUALCOMM,	"Qualcomm",	cpu_parts_none },
 	{ CPU_IMPL_MARVELL,	"Marvell",	cpu_parts_none },
 	{ CPU_IMPL_INTEL,	"Intel",	cpu_parts_none },

@@ -184,7 +184,7 @@ apm_xhci_attach(device_t self)
 		return (err);
 	}
 
-	err = xhci_init(sc, self);
+	err = xhci_init(sc, self, 0);
 	if (err != 0) {
 		device_printf(self, "Failed to init XHCI, with error %d\n", err);
 		apm_xhci_detach(self);

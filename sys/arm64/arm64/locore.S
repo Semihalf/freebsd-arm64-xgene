@@ -86,6 +86,7 @@ virtdone:
 	/* Set up the stack */
 	adr	x25, initstack_end
 	mov	sp, x25
+	sub	sp, sp, #PCB_SIZE
 
 	/* Zero the BSS */
 	ldr	x15, .Lbss

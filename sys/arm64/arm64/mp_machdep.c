@@ -52,6 +52,8 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/intr.h>
 #include <machine/smp.h>
+#include <machine/bus.h>
+#include <machine/fdt.h>
 #ifdef VFP
 #include <machine/vfp.h>
 #endif
@@ -60,7 +62,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_cpu.h>
 #endif
-#include <dev/psci/psci.h>
+/* ARM64TODO: check if PSCI is in the conf */
+//#include <dev/psci/psci.h>
 
 boolean_t ofw_cpu_reg(phandle_t node, u_int, cell_t *);
 
@@ -94,6 +97,12 @@ uint8_t secondary_stacks[MAXCPU - 1][PAGE_SIZE * KSTACK_PAGES] __aligned(16);
 
 /* # of Applications processors */
 volatile int mp_naps;
+/* # of CPU sockets */
+int mp_cpu_sockets;
+/* # of CPU clusters per socket */
+int mp_cpu_clusters;
+/* # of all CPUs in FDT */
+int mp_allcpus;
 /* Set to 1 once we're ready to let the APs out of the pen. */
 volatile int aps_ready = 0;
 
@@ -169,6 +178,58 @@ arm64_cpu_attach(device_t dev)
 	return (0);
 }
 
+#define DO_SEV_LATER
+static void
+platform_mp_start_ap(uint64_t target_cpu, vm_paddr_t pa)
+{
+	bus_space_handle_t handle;
+	bus_addr_t	release_address;
+	u_int		aff1, aff0;
+
+/* ARM64TODO: Release addresses are specific to APM XGene. They should be taken
+ * from FDT.
+ */
+#define APM_BASE_RELEASE_ADDR 0x4000008000UL
+
+	aff1 = (target_cpu >> 8) & 0xFF;
+	aff0 = target_cpu & 0xFF;
+	release_address = APM_BASE_RELEASE_ADDR + 0x1000 * (((aff1 & 0x7F) << 1) |
+	    (aff0 & 0x1));
+	release_address += 8;
+	if (bootverbose)
+		printf("Starting core %lx, writing to release address 0x%lx\n",
+		    target_cpu, release_address);
+	if (bus_space_map(fdtbus_bs_tag, release_address, 8, 0, &handle))
+		panic("Could not map CPU release address\n");
+	dsb();
+	__asm __volatile(
+	    "ic ialluis");
+	bus_space_write_8(fdtbus_bs_tag, handle, 0, pa);
+	dsb();
+	__asm __volatile(
+	    "ic ialluis");
+#ifndef DO_SEV_LATER
+	__asm __volatile(
+	    "sev" : : : "memory");
+#endif
+	__asm __volatile(
+	    "nop");
+	bus_space_unmap(fdtbus_bs_tag, handle, 8);
+}
+
+static void
+platform_do_sev(void)
+{
+	dsb();
+	__asm __volatile(
+	    "ic ialluis");
+	__asm __volatile(
+	    "sev" : : : "memory");
+	__asm __volatile(
+	    "nop");
+	dsb();
+}
+
 static boolean_t
 arm64_cpu_start(device_t dev, u_int cpuid)
 {
@@ -207,8 +268,10 @@ arm64_cpu_start(device_t dev, u_int cpuid)
 		printf("Starting CPU %u (%lx)\n", cpuid, target_cpu);
 		pa = pmap_extract(kernel_pmap, (vm_offset_t)mpentry);
 
-		/* ARM64TODO: We should check if we should use pcsi first */
-		psci_cpu_on(target_cpu, pa, cpuid);
+		/* ARM64TODO: We should check if we should use pcsi first
+		 * psci_cpu_on(target_cpu, pa, cpuid);
+		 */
+		platform_mp_start_ap(target_cpu, pa);
 	}
 
 	return (true);
@@ -223,6 +286,10 @@ release_aps(void *dummy __unused)
 	for (i = 0; i <= mp_maxid; i++)
 		if (arm64_cpu_start(cpu_list[i], i))
 			running++;
+
+#ifdef	DO_SEV_LATER
+	platform_do_sev();
+#endif
 
 	/* TODO: We will hit when some cores are disabled */
 	KASSERT(running == mp_ncpus, ("Unable to start all cores %u != %u",
@@ -396,6 +463,20 @@ cpu_mp_probe(void)
 
 #ifdef FDT
 static boolean_t
+cpu_set_topo_fdt(u_int id, phandle_t node, u_int addr_size, pcell_t *reg)
+{
+	int aff2, aff1;
+
+	/* Find the highest Aff2 and Aff1 numbers among the cores */
+	aff2 = (reg[1] >> 16) & 0xFF;
+	aff1 = (reg[1] >> 8) & 0xFF;
+	mp_cpu_sockets = max(mp_cpu_sockets, aff2 + 1);
+	mp_cpu_clusters = max(mp_cpu_clusters, aff1 + 1);
+
+	return (1);
+}
+
+static boolean_t
 cpu_init_fdt(u_int id, phandle_t node, u_int addr_size, pcell_t *reg)
 {
 	struct pcpu *pcpup;
@@ -454,6 +535,15 @@ cpu_mp_start(void)
 void
 cpu_mp_announce(void)
 {
+#ifdef FDT
+	if (bootverbose) {
+		int cpus_in_cluster;
+		cpus_in_cluster = mp_allcpus / (mp_cpu_sockets * mp_cpu_clusters);
+
+		printf("Sockets: %d, clusters per socket: %d, CPUs per cluster: %d\n",
+		    mp_cpu_sockets, mp_cpu_clusters, cpus_in_cluster);
+	}
+#endif
 }
 
 void
@@ -462,8 +552,9 @@ cpu_mp_setmaxid(void)
 #ifdef FDT
 	int cores;
 
-	cores = ofw_cpu_early_foreach(NULL, false);
+	cores = ofw_cpu_early_foreach(cpu_set_topo_fdt, false);
 	if (cores > 0) {
+		mp_allcpus = cores;
 		cores = MIN(cores, MAXCPU);
 		if (bootverbose)
 			printf("Found %d CPUs in the device tree\n", cores);
@@ -476,6 +567,7 @@ cpu_mp_setmaxid(void)
 
 	if (bootverbose)
 		printf("No CPU data, limiting to 1 core\n");
+	mp_allcpus = 1;
 	mp_ncpus = 1;
 	mp_maxid = 0;
 }

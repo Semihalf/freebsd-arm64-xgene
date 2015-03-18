@@ -27,6 +27,7 @@
  */
 
 #include "assym.s"
+#include "opt_platform.h"
 #include <sys/syscall.h>
 #include <machine/asm.h>
 #include <machine/armreg.h>
@@ -160,7 +161,6 @@ ENTRY(mpentry)
 	bl	drop_to_el1
 	/* Disable interrupts */
 	msr	daifset, #2
-
 	/* Load the kernel page table */
 	adr	x26, pagetable_l1_ttbr1
 	/* Load the identity page table */
@@ -176,6 +176,31 @@ ENTRY(mpentry)
 mp_virtdone:
 	ldr	x4, =secondary_stacks
 	mov	x5, #(PAGE_SIZE * KSTACK_PAGES)
+
+#ifdef FDT
+	/* Calculate CPU number based on Affinity:
+	 * cpus_per_socket = mp_allcpus / mp_cpu_sockets
+	 * cpus_per_cluster = cpus_per_socket / mp_cpu_clusters
+	 * cpuid = aff0 + aff1 * cpus_per_cluster + aff2 * cpus_per_socket
+	 * Result is passed to init_secondary in x0.
+	 */
+	ldr	x20, =mp_allcpus
+	ldr	x20, [x20]
+	ldr	x21, =mp_cpu_sockets
+	ldr	x21, [x21]
+	ldr	x22, =mp_cpu_clusters
+	ldr	x22, [x22]
+	sdiv	x23, x20, x21	/* x23 = cpus_per_socket */
+	sdiv	x24, x23, x22	/* x24 = cpus_per_cluster */
+	mrs	x9, mpidr_el1
+	ubfx	x10, x9, #0, #8		/* x10 = Aff0 */
+	ubfx	x11, x9, #8, #8		/* x11 = Aff1 */
+	ubfx	x12, x9, #16, #8	/* x12 = Aff2 */
+	madd	x0, x11, x24, x10
+	madd	x0, x12, x23, x0	/* x0 = cpuid */
+#endif
+
+	/* Calculate offset in secondary_stacks for this CPU */
 	mul	x5, x0, x5
 	add	sp, x4, x5
 

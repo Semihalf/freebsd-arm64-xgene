@@ -66,13 +66,15 @@ options 	KDTRACE_FRAME		# Ensure frames are compiled in
 options 	KDTRACE_HOOKS		# Kernel DTrace hooks
 options 	VFP			# Floating-point support
 
+options		SMP
+
 # Mount root from USB stick partition da0s2a by default
 options 	ROOTDEVNAME=\"ufs:da0s2a\"
 
 # Debugging support.
-#options 	KDB			# Enable kernel debugger support.
+options 	KDB			# Enable kernel debugger support.
 #options 	KDB_TRACE		# Print a stack trace for a panic.
-#options 	DDB			# Support DDB.
+options 	DDB			# Support DDB.
 #options 	GDB			# Support remote GDB.
 #options 	DEADLKRES		# Enable the deadlock resolver
 #options 	INVARIANTS		# Enable calls of extra sanity checking

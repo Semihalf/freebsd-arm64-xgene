@@ -123,7 +123,8 @@ apm_xhci_shutdown(device_t self)
 static int
 apm_xhci_probe(device_t self)
 {
-	if (!ofw_bus_is_compatible(self, "xhci-platform"))
+	if (!ofw_bus_status_okay(self) ||
+		!ofw_bus_is_compatible(self, "xhci-platform"))
 		return (ENXIO);
 
 	device_set_desc(self, XHCI_HC_DEVSTR);

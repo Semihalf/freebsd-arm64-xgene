@@ -148,6 +148,8 @@ virtdone:
  * The data in x0 is passed straight to init_secondary.
  */
 ENTRY(mpentry)
+	/* Drop to EL1 */
+	bl	drop_to_el1
 	/* Disable interrupts */
 	msr	daifset, #2
 

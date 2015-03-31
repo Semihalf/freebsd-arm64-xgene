@@ -95,6 +95,9 @@ static	int nexus_deactivate_resource(device_t, device_t, int, int,
 static int nexus_setup_intr(device_t dev, device_t child, struct resource *res,
     int flags, driver_filter_t *filt, driver_intr_t *intr, void *arg, void **cookiep);
 static int nexus_teardown_intr(device_t, device_t, struct resource *, void *);
+#ifdef SMP
+static int nexus_bind_intr(device_t, device_t, struct resource *, int);
+#endif
 
 #ifdef FDT
 static int nexus_ofw_map_intr(device_t dev, device_t child, phandle_t iparent,
@@ -114,6 +117,10 @@ static device_method_t nexus_methods[] = {
 	DEVMETHOD(bus_deactivate_resource,	nexus_deactivate_resource),
 	DEVMETHOD(bus_setup_intr,	nexus_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	nexus_teardown_intr),
+#ifdef SMP
+	DEVMETHOD(bus_bind_intr,	nexus_bind_intr),
+#endif
+
 #ifdef FDT
 	DEVMETHOD(ofw_bus_map_intr,	nexus_ofw_map_intr),
 #endif
@@ -262,6 +269,16 @@ nexus_teardown_intr(device_t dev, device_t child, struct resource *r, void *ih)
 
 	return (arm_teardown_intr(ih));
 }
+
+#ifdef SMP
+static int
+nexus_bind_intr(device_t bus __unused, device_t child __unused,
+    struct resource *r, int cpu)
+{
+
+	return (arm_bind_intr(rman_get_start(r), cpu));
+}
+#endif
 
 static int
 nexus_activate_resource(device_t bus, device_t child, int type, int rid,

@@ -45,6 +45,7 @@ int	arm_map_msix(device_t, int, uint64_t *, uint32_t *);
 int	arm_setup_intr(const char *, driver_filter_t *, driver_intr_t,
 				void *, u_int, enum intr_type, void **);
 int	arm_teardown_intr(void *);
+int	arm_bind_intr(u_int, u_char);
 void	arm_unmask_irq(u_int);
 
 #ifdef SMP

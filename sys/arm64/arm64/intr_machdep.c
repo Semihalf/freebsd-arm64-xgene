@@ -53,6 +53,8 @@ __FBSDID("$FreeBSD");
 #include <machine/intr.h>
 
 #ifdef SMP
+#include <sys/proc.h>
+#include <sys/smp.h>
 #include <machine/smp.h>
 #endif
 
@@ -84,6 +86,9 @@ struct arm64_intr_entry {
 	u_int			i_cntidx;	/* Index in intrcnt table */
 	u_int			i_handlers;	/* Allocated handlers */
 	u_long			*i_cntp;	/* Interrupt hit counter */
+#ifdef SMP
+	u_int			i_cpu;
+#endif
 };
 
 /* Counts and names for statistics - see sys/sys/interrupt.h */
@@ -99,6 +104,11 @@ static u_int arm64_nstray;	/* Number of received stray interrupts */
 static device_t root_pic;	/* PIC device for all incoming interrupts */
 static device_t msi_pic;	/* Device which handles MSI/MSI-X interrupts */
 static struct mtx intr_list_lock;
+
+#ifdef SMP
+static boolean_t assign_cpu = FALSE;
+static u_int nextcpu;
+#endif
 
 static void
 intr_init(void *dummy __unused)
@@ -120,6 +130,28 @@ intrcnt_setname(const char *name, u_int idx)
 	snprintf(&intrnames[idx * INTRNAME_LEN], INTRNAME_LEN, "%-*s",
 	    INTRNAME_LEN - 1, name);
 }
+
+#ifdef SMP
+static u_int
+intr_assign_next_cpu(void)
+{
+	u_int cpu;
+
+	mtx_assert(&intr_list_lock, MA_OWNED);
+
+	for (cpu = nextcpu; cpu <= MAXCPU; cpu++) {
+		if (cpu == MAXCPU)
+			cpu = 0;
+		if (CPU_ISSET(cpu, &all_cpus)) {
+			nextcpu = (cpu + 1) == MAXCPU ? 0 : (cpu + 1);
+			break;
+		}
+	}
+
+	return (cpu);
+}
+#endif
+
 
 /*
  * Get intr structure for the given interrupt number.
@@ -157,6 +189,10 @@ intr_acquire(u_int hw_irq)
 	intr->i_cntidx = atomic_fetchadd_int(&intrcntidx, 1);
 	intr->i_cntp = &intrcnt[intr->i_cntidx];
 	intr->i_hw_irq = hw_irq;
+#ifdef SMP
+	/* Allocate each new interrupt to the boot CPU */
+	intr->i_cpu = 0;
+#endif
 	SLIST_INSERT_HEAD(&irq_slist_head, intr, entries);
 out:
 	mtx_unlock(&intr_list_lock);
@@ -311,6 +347,31 @@ arm_enable_intr(void)
 	return (0);
 }
 
+static int
+arm_assign_intr_cpu(void *arg, int cpu)
+{
+#ifdef SMP
+	struct arm64_intr_entry *intr = arg;
+	cpuset_t cpus;
+
+	if (assign_cpu && cpu != NOCPU && root_pic) {
+		if (!CPU_ISSET(cpu, &all_cpus))
+			return (EINVAL);
+
+		mtx_lock(&intr_list_lock);
+		intr->i_cpu = cpu;
+		CPU_ZERO(&cpus);
+		CPU_SET(cpu, &cpus);
+		PIC_BIND(root_pic, intr->i_hw_irq, cpus);
+		mtx_unlock(&intr_list_lock);
+	}
+
+	return (0);
+#else
+	return (EOPNOTSUPP);
+#endif
+}
+
 int
 arm_setup_intr(const char *name, driver_filter_t *filt, driver_intr_t handler,
     void *arg, u_int hw_irq, enum intr_type flags, void **cookiep)
@@ -333,7 +394,7 @@ arm_setup_intr(const char *name, driver_filter_t *filt, driver_intr_t handler,
 	if (intr->i_event == NULL) {
 		error = intr_event_create(&intr->i_event, (void *)intr, 0,
 		    hw_irq, intr_pre_ithread, intr_post_ithread,
-		    intr_post_filter, NULL, "irq%u", hw_irq);
+		    intr_post_filter, arm_assign_intr_cpu, "irq%u", hw_irq);
 		if (error)
 			return (error);
 	}
@@ -380,6 +441,52 @@ arm_teardown_intr(void *cookie)
 
 	return (error);
 }
+
+#ifdef SMP
+int
+arm_bind_intr(u_int hw_irq, u_char cpu)
+{
+	struct arm64_intr_entry *intr;
+
+	intr = intr_acquire(hw_irq);
+	if (intr == NULL)
+		return (ENOMEM);
+
+	return (intr_event_bind(intr->i_event, cpu));
+}
+
+/*
+ * Distribute all the interrupt sources among the available CPUs once the
+ * APs have been launched.
+ */
+static void
+arm_shuffle_intr(void *arg __unused)
+{
+	struct arm64_intr_entry *intr;
+	cpuset_t cpus;
+	u_int cpu;
+
+	/* Don't bother on UP. */
+	if (mp_ncpus == 1)
+		return;
+
+	mtx_lock(&intr_list_lock);
+	assign_cpu = TRUE;
+
+	SLIST_FOREACH(intr, &irq_slist_head, entries) {
+		cpu = intr->i_event->ie_cpu;
+		if (cpu != NOCPU) {
+			intr->i_cpu = cpu;
+			CPU_ZERO(&cpus);
+			CPU_SET(cpu, &cpus);
+			PIC_BIND(root_pic, intr->i_hw_irq, cpus);
+		} else
+			intr->i_cpu = intr_assign_next_cpu();
+	}
+	mtx_unlock(&intr_list_lock);
+}
+SYSINIT(arm_shuffle_intr, SI_SUB_SMP, SI_ORDER_SECOND, arm_shuffle_intr, NULL);
+#endif
 
 int
 arm_config_intr(u_int hw_irq, enum intr_trigger trig, enum intr_polarity pol)

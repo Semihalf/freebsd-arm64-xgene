@@ -258,6 +258,7 @@ void
 init_secondary(uint64_t cpu)
 {
 	struct pcpu *pcpup;
+	uint64_t mpidr;
 	int i;
 
 	pcpup = &__pcpu[cpu];
@@ -268,7 +269,11 @@ init_secondary(uint64_t cpu)
 	__asm __volatile(
 	    "mov x18, %0 \n"
 	    "msr tpidr_el1, %0" :: "r"(pcpup));
-
+	/*
+	 * Save affinity for the secondary CPU.
+	 */
+	mpidr = get_mpidr();
+	CPU_AFFINITY(cpu) = mpidr & CPU_AFF_MASK;
 	/*
 	 * pcpu_init() updates queue, so it should not be executed in parallel
 	 * on several cores

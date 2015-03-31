@@ -47,6 +47,7 @@ static int		simplebus_probe(device_t dev);
 static int		simplebus_attach(device_t dev);
 static struct resource *simplebus_alloc_resource(device_t, device_t, int,
     int *, u_long, u_long, u_long, u_int);
+static struct resource_list *simplebus_get_resource_list(device_t, device_t);
 static void		simplebus_probe_nomatch(device_t bus, device_t child);
 static int		simplebus_print_child(device_t bus, device_t child);
 
@@ -80,6 +81,9 @@ static device_method_t	simplebus_methods[] = {
 	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
 	DEVMETHOD(bus_alloc_resource,	simplebus_alloc_resource),
 	DEVMETHOD(bus_release_resource,	bus_generic_release_resource),
+	DEVMETHOD(bus_set_resource,	bus_generic_rl_set_resource),
+	DEVMETHOD(bus_get_resource,	bus_generic_rl_get_resource),
+	DEVMETHOD(bus_get_resource_list, simplebus_get_resource_list),
 	DEVMETHOD(bus_activate_resource, bus_generic_activate_resource),
 	DEVMETHOD(bus_deactivate_resource, bus_generic_deactivate_resource),
 	DEVMETHOD(bus_adjust_resource,	bus_generic_adjust_resource),
@@ -246,6 +250,15 @@ simplebus_setup_dinfo(device_t dev, phandle_t node)
 	ofw_bus_intr_to_rl(dev, node, &ndi->rl);
 
 	return (ndi);
+}
+
+static struct resource_list *
+simplebus_get_resource_list(device_t bus __unused, device_t child)
+{
+	struct simplebus_devinfo *di;
+
+	di = device_get_ivars(child);
+	return (&di->rl);
 }
 
 static const struct ofw_bus_devinfo *

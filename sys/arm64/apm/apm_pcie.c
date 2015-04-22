@@ -26,6 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
 /*
  * PCIe root complex driver for APM X-Gene SoC
  */
@@ -61,63 +62,52 @@ __FBSDID("$FreeBSD$");
 
 #include "pcib_if.h"
 
-/*#define APM_PCIE_CSR 0
-#define APM_PCIE_CFG 1
-#define APM_PCIE_MEM_REGIONS 2
-*/
-
 #define APM_PCIE_RESOURCE_TYPE 0x8
 #define APM_PCIE_ROOT_CMPLX_CLASS 0x060400
 #define APM_PCIE_ENDPOINT_CLASS 0x118000
 
-
-#define APM_PCIECORE_CTLANDSTATUS		0x50
-#define APM_PIM1_1L 0x80
+#define APM_PCIECORE_CTLANDSTATUS	0x50
+#define APM_PIM1_1L		0x80
+#define APM_IBAR2		0x98
+#define APM_IR2MSK		0x9c
+#define APM_PIM2_1L		0xa0
+#define APM_IBAR3L		0xb4
+#define APM_IR3MSKL		0xbc
+#define APM_PIM3_1L		0xc4
 #define APM_OMR1BARL	0x100
-#define APM_OMR3BARL 0x130
-#define APM_CFGBARL 0x154
-#define APM_CFGBARH 0x158
-#define APM_CFGCTL 0x15C
-#define APM_RTDID 0x160
-#define APM_SRST 0xc000
-#define APM_CLKEN 0xc008
-
-#define APM_IBAR2 0x98
-#define APM_IR2MSK 0x9c
-
-
-#define APM_PIM2_1L 0xa0
-#define APM_IBAR3L 0xb4
-#define APM_IR3MSKL 0xbc
-#define APM_PIM3_1L 0xc4
-
+#define APM_OMR3BARL	0x130
+#define APM_CFGBARL		0x154
+#define APM_CFGBARH		0x158
+#define APM_CFGCTL		0x15C
+#define APM_RTDID		0x160
 #define APM_BRIDGE_CFG_0 0x2000
 #define APM_BRIDGE_CFG_4 0x2010
-#define APM_AXI_EP_CFG_ACCESS		0x10000
-#define APM_EN_COHERENCY			0xF0000000
+#define APM_SRST		0xc000
+#define APM_CLKEN		0xc008
+#define APM_AXI_EP_CFG_ACCESS	0x10000
+#define APM_EN_COHERENCY	0xF0000000
 
 #define APM_EN_REG		0x00000001
 #define APM_OB_LO_IO	0x00000002
-#define APM_PCIE_DEVICEID	0xE004
-#define APM_PCIE_VENDORID	0x10E8
 
 #define APM_LINKUP_MASK			0x00000100
 
-#define SIZE_1K 0x00000400
-#define SIZE_1M 0x00100000
-#define SIZE_16M 0x01000000
-#define SIZE_1G 0x40000000
-#define SIZE_1T (SIZE_1G * 1024ULL)
+#define APM_PCIE_DEVICEID	0xE004
+#define APM_PCIE_VENDORID	0x10E8
 
-typedef enum _apm_pcie_mode
-{
-	INVALID,
+#define SIZE_1K	0x00000400
+#define SIZE_1M	0x00100000
+#define SIZE_16M	0x01000000
+#define SIZE_1G	0x40000000
+#define SIZE_1T	(SIZE_1G * 1024ULL)
+
+typedef enum {
 	ROOT_CMPLX,
 	ENDPOINT,
 } apm_pcie_mode;
 
-enum apm_memory_regions
-{
+#define APM_DMA_RANGES_COUNT 2
+enum apm_memory_regions {
 	APM_PCIE_CSR = 0,
 	APM_PCIE_CFG,
 	APM_PCIE_MEM_REGIONS, /* total number of memory regions */
@@ -142,7 +132,6 @@ enum apm_memory_regions
 #define printdbg(fmt,args...)
 #endif
 
-
 struct range {
 	uint32_t flags;
 	bus_addr_t pci_addr;
@@ -157,10 +146,11 @@ struct ranges {
 
 	struct rman	io_rman;
 	struct rman	mem_rman;
+
 };
 
 struct dma_ranges {
-	struct range dma[2];
+	struct range dma[APM_DMA_RANGES_COUNT];
 };
 
 struct apm_pcie_softc {
@@ -172,8 +162,14 @@ struct apm_pcie_softc {
 	int busnr;
 	apm_pcie_mode	mode;
 
+	struct mtx rw_mtx;
+	bool mtx_init;
+
 	struct ranges ranges;
 	struct dma_ranges dma_ranges;
+
+	bus_addr_t io_alloc;
+	bus_addr_t mem_alloc;
 
 };
 
@@ -261,15 +257,20 @@ apm_pcie_devclass, 0, 0);
 static void apm_pcie_set_rtdid_reg(struct apm_pcie_softc* sc,
 									u_int bus, u_int slot, u_int func)
 {
-	uint32_t rtdid_val = 0;
+	uint32_t rtdid_val = 0, retval;
 
 	if (sc->mode == ROOT_CMPLX)	{
 		rtdid_val = (bus << 8) | (slot << 3) | func;
 	}
 
 	apm_pcie_csr_write(APM_RTDID, rtdid_val);
-	/* Read register to make sure write flush was done */
-	apm_pcie_csr_read(APM_RTDID);
+	/* Read register to make sure flush was done */
+	retval = apm_pcie_csr_read(APM_RTDID);
+
+	if((retval & 0xFFFF) != rtdid_val)
+	{
+		printdbg("RTDID value set failed!\n");
+	}
 }
 
 /*
@@ -405,35 +406,26 @@ print_config_dbg(struct apm_pcie_softc* sc)
 {
 	int i;
 	uint32_t ret;
-	printf("\n\n\n");
+	printf("\n\n--------\n");
 	for (i = APM_PIM1_1L; i<= APM_CFGCTL; i += 4)
 	{
 		if(i % 0x10 == 0)
 			printf("\n %x >:  ", i);
 		ret = apm_pcie_csr_read(i);
-		printf("%#08x  ", ret);
+		printf("0x%08x  ", ret);
 	}
-	ret = apm_pcie_csr_read(APM_SRST);
-	printf("\n\nPCIE_SRST = %#08x\n", ret);
-	ret = apm_pcie_csr_read(APM_CLKEN);
-	printf("PCIE_CLKEN = %#08x\n", ret);
-	ret = apm_pcie_csr_read(APM_PCIECORE_CTLANDSTATUS);
-	printf("PCIECORE_CTLANDSTATUS = %#08x\n", ret);
-
-	printf("\n\n\n");
+	printf("\n");
 }
 
 /* clear BAR configuration which was done by firmware */
 static void
 apm_pcie_clear_firmware_config(struct apm_pcie_softc* sc)
 {
-	print_config_dbg(sc);
 	int i;
 	for(i = APM_PIM1_1L; i <= APM_CFGCTL; i += 4)
 	{
 		apm_pcie_csr_write(i, 0x0);
 	}
-	print_config_dbg(sc);
 }
 
 static u_int
@@ -444,7 +436,7 @@ apm_pcie_parse_fdt_ranges(struct apm_pcie_softc *sc)
 	phandle_t node;
 	pcell_t pci_addr_cells, parent_addr_cells, size_cells;
 	pcell_t *ranges_buf, *cell_ptr;
-	int cells_count, tuples_count, touple;
+	int cells_count, tuples_count, touple, i;
 	struct range *range;
 
 	node = ofw_bus_get_node(sc->dev);
@@ -533,19 +525,20 @@ apm_pcie_parse_fdt_ranges(struct apm_pcie_softc *sc)
 	}
 	tuples_count = cells_count /
 			    (pci_addr_cells + parent_addr_cells + size_cells);
-	if (tuples_count != 2) {
+	if (tuples_count != APM_DMA_RANGES_COUNT) {
 		device_printf(sc->dev,
 			"ERROR: unexpected number of 'dma-ranges' tuples in FDT\n");
 		retval = ENXIO;
 		goto out;
 	}
 
-	bzero(&sc->dma_ranges.dma[0], sizeof(sc->dma_ranges.dma[0]));
-	bzero(&sc->dma_ranges.dma[1], sizeof(sc->dma_ranges.dma[1]));
+	for (i = 0 ; i < APM_DMA_RANGES_COUNT; i++)	{
+		bzero(&sc->dma_ranges.dma[i], sizeof(sc->dma_ranges.dma[i]));
+	}
 
 	cell_ptr = ranges_buf;
 	for (touple = 0; touple < tuples_count; touple++) {
-		if (touple < 2)
+		if (touple < APM_DMA_RANGES_COUNT)
 			range = &sc->dma_ranges.dma[touple];
 		else {
 			retval = ERANGE;
@@ -585,6 +578,187 @@ out:
 	return (retval);
 }
 
+static int
+apm_pcib_init_bar(struct apm_pcie_softc *sc, int bus, int slot, int func,
+    int barno)
+{
+	bus_addr_t *allocp;
+	uint32_t addr, mask, size;
+	int reg, width;
+
+	reg = PCIR_BAR(barno);
+
+	apm_pcie_write_config(sc->dev, bus, slot, func, reg, ~0U, 4);
+	size = apm_pcie_read_config(sc->dev, bus, slot, func, reg, 4);
+	if (size == 0)
+		return (1);
+
+	width = ((size & 7) == 4) ? 2 : 1;
+
+	if (size & 1) {			/* I/O port */
+		allocp = &sc->io_alloc;
+		size &= ~3;
+		if ((size & 0xffff0000) == 0)
+			size |= 0xffff0000;
+	} else {			/* memory */
+		allocp = &sc->mem_alloc;
+		size &= ~15;
+	}
+	mask = ~size;
+	size = mask + 1;
+	/* Sanity check (must be a power of 2). */
+	if (size & mask)
+		return (width);
+
+	addr = (*allocp + mask) & ~mask;
+	*allocp = addr + size;
+
+	if (1)
+		printf("PCI %u:%u:%u:%u: reg %x: size=%08x: addr=%08x\n",
+		    device_get_unit(sc->dev), bus, slot, func, reg,
+		    size, addr);
+
+	apm_pcie_write_config(sc->dev, bus, slot, func, reg, addr, 4);
+	if (width == 2)
+		apm_pcie_write_config(sc->dev, bus, slot, func, reg + 4,
+		    0, 4);
+	return (width);
+}
+
+static int
+apm_pcib_init(struct apm_pcie_softc *sc, int bus, int maxslot)
+{
+	int secbus;
+	int old_pribus, old_secbus, old_subbus;
+	int new_pribus, new_secbus, new_subbus;
+	int slot, func, maxfunc;
+	int bar, maxbar;
+	uint16_t vendor, device;
+	uint8_t command, hdrtype, class, subclass;
+	/*  uint8_t intline, intpin; */
+
+	secbus = bus;
+	for (slot = 0; slot <= maxslot; slot++) {
+		maxfunc = 0;
+		for (func = 0; func <= maxfunc; func++) {
+			hdrtype = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_HDRTYPE, 1);
+
+			if ((hdrtype & PCIM_HDRTYPE) > PCI_MAXHDRTYPE)
+				continue;
+
+			if (func == 0 && (hdrtype & PCIM_MFDEV))
+				maxfunc = PCI_FUNCMAX;
+
+			vendor = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_VENDOR, 2);
+			device = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_DEVICE, 2);
+			command = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_COMMAND, 1);
+			command &= ~(PCIM_CMD_MEMEN | PCIM_CMD_PORTEN);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_COMMAND, command, 1);
+
+			/* Program the base address registers. */
+			maxbar = (hdrtype & PCIM_HDRTYPE) ? 1 : 6;
+			bar = 0;
+			while (bar < maxbar)
+				bar += apm_pcib_init_bar(sc, bus, slot, func,
+				    bar);
+
+			/* Perform interrupt routing.
+			intpin = apm_pcib_read_config(sc->dev, bus, slot,
+			    func, PCIR_INTPIN, 1);
+			intline = apm_pcib_route_int(sc, bus, slot, func,
+			    intpin);
+			apm_pcib_write_config(sc->sc_dev, bus, slot, func,
+			    PCIR_INTLINE, intline, 1);
+
+			command |= PCIM_CMD_MEMEN | PCIM_CMD_PORTEN |
+			    PCIM_CMD_BUSMASTEREN;
+			apm_pcib_write_config(sc->sc_dev, bus, slot, func,
+			    PCIR_COMMAND, command, 1); */
+
+			/*
+			 * Handle PCI-PCI bridges
+			 */
+			class = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_CLASS, 1);
+			subclass = apm_pcie_read_config(sc->dev, bus, slot,
+			    func, PCIR_SUBCLASS, 1);
+
+			/* Allow only proper PCI-PCI briges */
+			if (class != PCIC_BRIDGE || subclass != PCIS_BRIDGE_PCI)
+				continue;
+
+			secbus++;
+
+			/* Program I/O decoder. */
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_IOBASEL_1, sc->ranges.io_rman.rm_start >> 8, 1);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_IOLIMITL_1, sc->ranges.io_rman.rm_start >> 8, 1);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_IOBASEH_1, sc->ranges.io_rman.rm_start >> 16, 2);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_IOLIMITH_1, sc->ranges.io_rman.rm_start >> 16, 2);
+
+			/* Program (non-prefetchable) memory decoder. */
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_MEMBASE_1, sc->ranges.mem_rman.rm_start >> 16, 2);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_MEMLIMIT_1, sc->ranges.mem_rman.rm_end >> 16, 2);
+
+			/* Program prefetchable memory decoder. */
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_PMBASEL_1, 0x0010, 2);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_PMLIMITL_1, 0x000f, 2);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_PMBASEH_1, 0x00000000, 4);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_PMLIMITH_1, 0x00000000, 4);
+
+			/* Read currect bus register configuration */
+			old_pribus = apm_pcie_read_config(sc->dev, bus,
+			    slot, func, PCIR_PRIBUS_1, 1);
+			old_secbus = apm_pcie_read_config(sc->dev, bus,
+			    slot, func, PCIR_SECBUS_1, 1);
+			old_subbus = apm_pcie_read_config(sc->dev, bus,
+			    slot, func, PCIR_SUBBUS_1, 1);
+
+			if (1)
+				printf("PCI: reading firmware bus numbers for "
+				    "secbus = %d (bus/sec/sub) = (%d/%d/%d)\n",
+				    secbus, old_pribus, old_secbus, old_subbus);
+
+			new_pribus = bus;
+			new_secbus = secbus;
+
+			secbus = apm_pcib_init(sc, secbus,
+			    (subclass == PCIS_BRIDGE_PCI) ? PCI_SLOTMAX : 0);
+
+			new_subbus = secbus;
+
+			if (1)
+				printf("PCI: translate firmware bus numbers "
+				    "for secbus %d (%d/%d/%d) -> (%d/%d/%d)\n",
+				    secbus, old_pribus, old_secbus, old_subbus,
+				    new_pribus, new_secbus, new_subbus);
+
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_PRIBUS_1, new_pribus, 1);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_SECBUS_1, new_secbus, 1);
+			apm_pcie_write_config(sc->dev, bus, slot, func,
+			    PCIR_SUBBUS_1, new_subbus, 1);
+		}
+	}
+
+	return (secbus);
+}
+
 static void
 apm_pcie_write_vendor_device_ids(struct apm_pcie_softc* sc)
 {
@@ -599,7 +773,7 @@ static int
 apm_pcie_select_ib_region(uint8_t* ib_reg_mask, uint64_t size)
 {
 	int retval = -1;
-	printdbg("IB_REG_MASK = %#x  SIZE = %#lx\n", *ib_reg_mask, size);
+
 	if ((size > 4) && (size < SIZE_16M) &&
 						!(*ib_reg_mask & (1 << 1))) {
 		*ib_reg_mask |= (1 << 1);
@@ -617,8 +791,6 @@ apm_pcie_select_ib_region(uint8_t* ib_reg_mask, uint64_t size)
 		*ib_reg_mask |= (1 << 2);
 		retval = 2;
 	}
-
-	printdbg("RETVAL = %d\n", retval);
 
 	return (retval);
 }
@@ -680,6 +852,7 @@ apm_pcie_setup_ib_reg(struct apm_pcie_softc* sc, uint64_t cpu_addr,
 		flags |= PCIM_BAR_MEM_PREFETCH;
 
 	bar_addr = ((uint32_t)cpu_addr & PCIM_BAR_MEM_BASE) | flags;
+
 	switch (region) {
 	case 0:
 		apm_pcie_set_ib_mask(sc, APM_BRIDGE_CFG_4, flags, size);
@@ -712,13 +885,10 @@ apm_pcie_setup_outbound_reg(struct apm_pcie_softc* sc, uint32_t reg,
 	uint32_t min_size;
 	uint32_t flag = APM_EN_REG;
 
-	if (mem_resource)
-	{
+	if (mem_resource) {
 		min_size = 0x08000000; /* 128M */
 		size = sc->ranges.mem.size;
-	}
-	else
-	{
+	} else {
 		min_size = 128;
 		size = sc->ranges.io.size;
 		flag |= APM_OB_LO_IO;
@@ -730,6 +900,8 @@ apm_pcie_setup_outbound_reg(struct apm_pcie_softc* sc, uint32_t reg,
 		device_printf(sc->dev, "res size %#lx less than minimum %#x\n",
 			 (uint64_t)size, min_size);
 
+	printf("%s(): BASE = 0x%016lX  CPU_ADDR = 0x%016lX  MASK = 0x%016lX  PCI_ADDR = 0x%016lX\n", __func__,
+			(uint64_t)reg, cpu_addr, mask, pci_addr);
 	/* Write addresses to CSR registers */
 	apm_pcie_csr_write(reg, cpu_addr & 0xFFFFFFFF);
 	apm_pcie_csr_write(reg + 0x04, cpu_addr >> 32);
@@ -779,8 +951,8 @@ apm_pcie_map_ranges(struct apm_pcie_softc* sc)
 	}
 
 	err = rman_manage_region(&sc->ranges.mem_rman,
-			sc->ranges.mem.cpu_addr,
-			sc->ranges.mem.cpu_addr + sc->ranges.mem.size - 1);
+			sc->ranges.mem.pci_addr,
+			sc->ranges.mem.pci_addr + sc->ranges.mem.size - 1);
 	if (err) {
 		device_printf(self, "rman_manage_region() for memory failed. error = %d\n", err);
 		rman_fini(&sc->ranges.mem_rman);
@@ -788,13 +960,16 @@ apm_pcie_map_ranges(struct apm_pcie_softc* sc)
 	}
 
 	err = rman_manage_region(&sc->ranges.io_rman,
-			sc->ranges.io.cpu_addr,
-			sc->ranges.io.cpu_addr + sc->ranges.io.size - 1);
+			sc->ranges.io.pci_addr,
+			sc->ranges.io.pci_addr + sc->ranges.io.size - 1);
 	if (err) {
 		device_printf(self, "rman_manage_region() for I/O failed. error = %d\n", err);
 		rman_fini(&sc->ranges.io_rman);
 		return (err);
 	}
+
+	sc->io_alloc = sc->ranges.io.pci_addr;
+	sc->mem_alloc = sc->ranges.mem.pci_addr;
 
 	/* Setup outbound regions in controller's register */
 	apm_pcie_setup_outbound_reg(sc, APM_OMR3BARL, sc->ranges.io.cpu_addr,
@@ -822,7 +997,7 @@ static int
 apm_pcie_setup(struct apm_pcie_softc *sc)
 {
 	int retval, i;
-	uint8_t ib_reg_mask;
+	uint8_t ib_reg_mask = 0;
 	uint64_t cpu_addr, pci_addr, size;
 	bool prefetch;
 
@@ -836,8 +1011,7 @@ apm_pcie_setup(struct apm_pcie_softc *sc)
 
 	apm_pcie_setup_cfg_reg(sc);
 
-	for (i = 0; i < 2; i++) {
-		ib_reg_mask = 0;
+	for (i = 0; i < APM_DMA_RANGES_COUNT; i++) {
 		cpu_addr = sc->dma_ranges.dma[i].cpu_addr;
 		pci_addr = sc->dma_ranges.dma[i].pci_addr;
 		size = sc->dma_ranges.dma[i].size;
@@ -849,6 +1023,8 @@ apm_pcie_setup(struct apm_pcie_softc *sc)
 	}
 
 	apm_pcie_linkup(sc);
+
+	print_config_dbg(sc);
 
 	return (0);
 }
@@ -875,10 +1051,12 @@ apm_pcie_attach(device_t self)
 {
 	struct apm_pcie_softc	*sc;
 	uint32_t val;
-	int err;
+	int err, maxslot = 0;
 
 	sc = device_get_softc(self);
 	sc->dev = self;
+
+	sc->busnr = 0;
 
 	err = bus_alloc_resources(self, apm_pcie_mem_spec, sc->res);
 	if (err) {
@@ -910,6 +1088,13 @@ apm_pcie_attach(device_t self)
 		return (ENXIO);
 	}
 
+	/* Init R/W mutex */
+	if (!sc->mtx_init) {
+		printdbg("Init mutex\n");
+		mtx_init(&sc->rw_mtx, "pcicfg", NULL, MTX_SPIN);
+		sc->mtx_init = true;
+	}
+
 	/* Set up APM specific PCIe configuration */
 	err = apm_pcie_setup(sc);
 	if (err) {
@@ -917,6 +1102,9 @@ apm_pcie_attach(device_t self)
 				"ERROR: PCIe configuration failed (err: %d)\n", err);
 		return (ENXIO);
 	}
+
+	maxslot = 0;
+	apm_pcib_init(sc, sc->busnr, maxslot);
 
 	device_add_child(self, "pci", -1);
 	return (bus_generic_attach(self));
@@ -926,23 +1114,30 @@ static uint32_t
 apm_pcie_read_config(device_t dev, u_int bus, u_int slot,
     u_int func, u_int reg, int bytes)
 {
+	static int sslot = 55, ffunc = 55;
 	struct apm_pcie_softc* sc = device_get_softc(dev);
 	uint32_t retval = ~0U;
 
-	static u_int bbus, sslot, ffunc, tmp;
-
 	/* Root Complex can have only one function */
-	if(sc->mode == ROOT_CMPLX && bus == 0 && (slot != 0 || func != 0))
-	{
-		return (~0U);
+	if (sc->mode == ROOT_CMPLX && bus == 0 && (slot != 0 || func != 0)) {
+		return (retval);
 	}
-
-	if(!apm_pcie_hide_root_cmplx_bars(sc, bus, reg))
+	if(slot != sslot || func != ffunc)
 	{
+		printf("\n"
+				"--- BUS %d - SLOT %d - FUNC %d ---"
+				"\n",
+				bus, slot, func);
+		sslot = slot;
+		ffunc = func;
+	}
+	if (!apm_pcie_hide_root_cmplx_bars(sc, bus, reg))
+	{
+		mtx_lock_spin(&sc->rw_mtx);
+
 		apm_pcie_set_rtdid_reg(sc, bus, slot, func);
 		apm_pcie_set_cfg_offset(sc, bus);
-		switch (bytes)
-		{
+		switch (bytes) {
 		case 1:
 			retval = apm_pcie_cfg_r8(sc, reg);
 			break;
@@ -955,21 +1150,12 @@ apm_pcie_read_config(device_t dev, u_int bus, u_int slot,
 		default:
 			retval = ~0U;
 		}
-	}
 
-	if(tmp == 0)
-	{
-		printf("\n\nBUS: %d  --  SLOT: %d  --  FUNC: %d\n",bus,slot,func);
-		tmp = 1;
+		mtx_unlock_spin(&sc->rw_mtx);
+
+	} else	{
+		printf("Hide RC BARs\n");
 	}
-	if(bbus != bus || sslot != slot || ffunc != func)
-	{
-		printf("\nBUS: %d  --  SLOT: %d  --  FUNC: %d\n",bus,slot,func);
-		bbus = bus;
-		sslot = slot;
-		ffunc = func;
-	}
-	printf("%d:%#x ", bytes, retval);
 
 	return (retval);
 }
@@ -983,12 +1169,14 @@ apm_pcie_write_config(device_t dev, u_int bus, u_int slot,
 	if (bus > 255 || slot > 31 || func > 7 || reg > 4095)
 			return;
 
-	if(!apm_pcie_hide_root_cmplx_bars(sc, bus, reg))
-	{
+	if (!apm_pcie_hide_root_cmplx_bars(sc, bus, reg)) {
+
+		mtx_lock_spin(&sc->rw_mtx);
+
 		apm_pcie_set_rtdid_reg(sc, bus, slot, func);
 		apm_pcie_set_cfg_offset(sc, bus);
 
-		switch(bytes){
+		switch (bytes) {
 		case 1:
 			apm_pcie_cfg_w8(sc, reg, (uint8_t)val);
 			break;
@@ -1001,6 +1189,8 @@ apm_pcie_write_config(device_t dev, u_int bus, u_int slot,
 		default:
 			return;
 		}
+
+		mtx_unlock_spin(&sc->rw_mtx);
 	}
 }
 
@@ -1048,16 +1238,54 @@ apm_pcie_alloc_resource(device_t dev,
     device_t child, int type, int *rid, u_long start, u_long end,
     u_long count, u_int flags)
 {
-	printdbg("%s","Not implemented yet...\n");
-	return (NULL);
+	struct apm_pcie_softc *sc = device_get_softc(dev);
+	struct rman *rm = NULL;
+	struct resource *res;
+
+	switch (type) {
+	case SYS_RES_IOPORT:
+		rm = &sc->ranges.io_rman;
+		break;
+	case SYS_RES_MEMORY:
+		rm = &sc->ranges.mem_rman;
+		break;
+	default:
+		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), dev,
+			type, rid, start, end, count, flags));
+	};
+	if ((start == 0U) && (end == 0xFFFFFFFF)) {
+			start = sc->ranges.mem.pci_addr;
+			end = sc->ranges.mem.pci_addr + sc->ranges.mem.size - 1;
+			count = sc->ranges.mem.size;
+	}
+
+	res = rman_reserve_resource(rm, start, end, count, flags, child);
+	if (res == NULL)
+		return (NULL);
+
+	rman_set_rid(res, *rid);
+	rman_set_bustag(res, fdtbus_bs_tag);
+	rman_set_bushandle(res, start);
+
+	if (flags & RF_ACTIVE)
+		if (bus_activate_resource(child, type, *rid, res)) {
+			rman_release_resource(res);
+			return (NULL);
+		}
+
+	printdbg("Resource allocated\n");
+	return (res);
 }
 
 static int
 apm_pcie_release_resource(device_t dev, device_t child,
     int type, int rid, struct resource *res)
 {
-	printdbg("%s","Not implemented yet...\n");
-	return (-1);
+	if (type != SYS_RES_IOPORT && type != SYS_RES_MEMORY)
+		return (BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
+			type, rid, res));
+
+	return (rman_release_resource(res));
 }
 
 static int

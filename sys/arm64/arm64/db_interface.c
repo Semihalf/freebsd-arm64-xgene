@@ -31,6 +31,9 @@
 __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/proc.h>
+#include <vm/vm.h>
+#include <vm/pmap.h>
+#include <vm/vm_map.h>
 
 #ifdef KDB
 #include <sys/kdb.h>
@@ -41,6 +44,7 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/cpu.h>
 #include <machine/pcb.h>
+#include <machine/vmparam.h>
 
 static int
 db_frame(struct db_variable *vp, db_expr_t *valuep, int op)
@@ -106,8 +110,6 @@ db_show_mdpcpu(struct pcpu *pc)
 static int
 db_validate_address(vm_offset_t addr)
 {
-	/* XXX ARM64TODO: Revisit once pmap_extract() is implemented */
-#if 0
 	struct proc *p = curproc;
 	struct pmap *pmap;
 
@@ -118,8 +120,6 @@ db_validate_address(vm_offset_t addr)
 		pmap = p->p_vmspace->vm_map.pmap;
 
 	return (pmap_extract(pmap, addr) == FALSE);
-#endif
-	return 0;
 }
 
 /*
@@ -157,12 +157,10 @@ db_write_bytes(vm_offset_t addr, size_t size, char *data)
 		*dst++ = *data++;
 	}
 
-	/*
-	 * XXX ARM64TODO: Revisit while we have D-cache switched on.
-	 * For now, take care of I-cache and barriers only.
-	 */
 	dsb();
-	__asm __volatile("ic ialluis" : : : "memory");
+	/* Clean D-cache and invalidate I-cache */
+	cpu_dcache_wb_range(addr, (vm_size_t)size);
+	cpu_icache_sync_range(addr, (vm_size_t)size);
 	dsb();
 	isb();
 

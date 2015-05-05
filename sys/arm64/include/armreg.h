@@ -108,7 +108,7 @@
 #define	ID_AA64PFR0_GIC_MASK	(0xf << 24)
 
 /* MAIR_EL1 - Memory Attribute Indirection Register */
-#define	MAIR_ATTR_MASK(idx)	(0xff << ((n)* 8))
+#define	MAIR_ATTR_MASK(idx)	(0xffUL << ((idx)* 8))
 #define	MAIR_ATTR(attr, idx) ((attr) << ((idx) * 8))
 
 /* SCTLR_EL1 - System Control Register */

@@ -406,18 +406,23 @@ static int
 apm_xgene_ahci_init_mem(struct resource *r_diag)
 {
 	uint32_t val = 0;
+	int ret = 0;
 	/* Try to enable memory */
 	val = ATA_INL(r_diag, CFG_MEM_RAM_SHUTDOWN);
-	ATA_OUTL(r_diag, CFG_MEM_RAM_SHUTDOWN, 0);
-	val = ATA_INL(r_diag, CFG_MEM_RAM_SHUTDOWN);
-	DELAY(1000);
-	if (val == 0) {
-		val = ATA_INL(r_diag, BLOCK_MEM_RDY);
-		if (val == ~0)
-			return 0;
-	}
+	if (val != 0) {
+		ATA_OUTL(r_diag, CFG_MEM_RAM_SHUTDOWN, 0);
+		DELAY(1000);
+		val = ATA_INL(r_diag, CFG_MEM_RAM_SHUTDOWN);
+		if (val == 0) {
+			val = ATA_INL(r_diag, BLOCK_MEM_RDY);
+			if (val != ~0)
+				ret = ENXIO;
+		} else
+			ret = ENXIO;
+	} else
+		ret = 0;
 
-	return (ENXIO);
+	return (ret);
 }
 
 static int
@@ -433,9 +438,6 @@ apm_xgene_ahci_attach(device_t self)
 	phandle_t node;
 	int reg_regs= 0;
 	int ret = 0;
-
-//	if (strcmp(device_get_nameunit(self), "ahci0"))
-		//return (ENXIO);
 
 	/* Set quirks */
 	ctl->quirks = AHCI_Q_XGENE_BUG;

@@ -104,4 +104,3 @@
 &usb1 {
 	status = "okay";
 };
-

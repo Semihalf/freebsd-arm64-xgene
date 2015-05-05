@@ -53,6 +53,7 @@ options 	GEOM_PART_GPT		# GUID Partition Tables.
 options 	GEOM_LABEL		# Provides labelization
 options 	SCSI_DELAY=5000		# Delay (in ms) before probing SCSI
 options 	KTRACE			# ktrace(1) support
+options		KSTACK_PAGES=4
 options 	STACK			# stack(9) support
 options 	SYSVSHM			# SYSV-style shared memory
 options 	SYSVMSG			# SYSV-style message queues
@@ -104,6 +105,8 @@ device		ada
 device		cd
 device		ct
 device		ch
+
+device		ahci
 
 # Pseudo devices.
 device		loop		# Network loopback

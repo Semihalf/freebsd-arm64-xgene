@@ -300,6 +300,19 @@
 #define 	AHCI_P_DEVSLP_DM    0x0e000000
 #define 	AHCI_P_DEVSLP_DM_SHIFT 25
 
+/* Received FIS structure offsets */
+struct ahci_rx_fis {
+	u_int8_t					dfis[28];
+	u_int8_t					res0[4];
+	u_int8_t					psfis[20];
+	u_int8_t					res1[12];
+	u_int8_t					rfis[20];
+	u_int8_t					res2[4];
+	u_int8_t					sdbfis[8];
+	u_int8_t					ufis[64];
+	u_int8_t					res3[96];
+} __packed;
+
 /* Just to be sure, if building as module. */
 #if MAXPHYS < 512 * 1024
 #undef MAXPHYS
@@ -578,6 +591,7 @@ enum ahci_err_type {
 #define AHCI_Q_SATA1_UNIT0	0x00008000	/* need better method for this */
 #define AHCI_Q_ABAR0		0x00010000
 #define AHCI_Q_1MSI		0x00020000
+#define AHCI_Q_XGENE_BUG	0x00040000
 
 #define AHCI_Q_BIT_STRING	\
 	"\021"			\
@@ -598,7 +612,8 @@ enum ahci_err_type {
 	"\017MAXIO_64K"		\
 	"\020SATA1_UNIT0"	\
 	"\021ABAR0"		\
-	"\0221MSI"
+	"\0221MSI"		\
+	"\023XGENE_BUG"
 
 int ahci_attach(device_t dev);
 int ahci_detach(device_t dev);

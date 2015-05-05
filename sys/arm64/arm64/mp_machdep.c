@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_kern.h>
 
 #include <machine/intr.h>
-#include <machine/psci.h>
 #include <machine/smp.h>
 #ifdef VFP
 #include <machine/vfp.h>
@@ -61,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_cpu.h>
 #endif
+#include <dev/psci/psci.h>
 
 boolean_t ofw_cpu_reg(phandle_t node, u_int, cell_t *);
 

@@ -446,8 +446,7 @@ void
 arm_setup_ipihandler(driver_filter_t *filt, u_int ipi)
 {
 
-	/* ARM64TODO: The hard coded 16 will be fixed with am_intrng */
-	arm_setup_intr("ipi", filt, NULL, (void *)((uintptr_t)ipi | 1<<16), ipi + 16,
+	arm_setup_intr("ipi", filt, NULL, (void *)((uintptr_t)ipi | 1<<16), ipi,
 	    INTR_TYPE_MISC | INTR_EXCL, NULL);
 	arm_unmask_ipi(ipi);
 }

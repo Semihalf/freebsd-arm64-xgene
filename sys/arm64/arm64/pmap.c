@@ -881,11 +881,11 @@ pmap_bootstrap_dmap(vm_offset_t l1pt)
 {
 	vm_offset_t va;
 	vm_paddr_t pa;
-	pd_entry_t *l1;
+	pd_entry_t *l1p, l1;
 	u_int l1_slot;
 
 	va = DMAP_MIN_ADDRESS;
-	l1 = (pd_entry_t *)l1pt;
+	l1p = (pd_entry_t *)l1pt;
 	l1_slot = pmap_l1_index(DMAP_MIN_ADDRESS);
 
 	for (pa = DMAP_MIN_PHYSADDR; va < DMAP_MAX_ADDRESS;
@@ -896,12 +896,15 @@ pmap_bootstrap_dmap(vm_offset_t l1pt)
 		 * TODO: Turn the cache on here when we have cache
 		 * flushing code.
 		 */
-		pmap_load_store(&l1[l1_slot],
-		    (pa & ~L1_OFFSET) | ATTR_AF | L1_BLOCK |
-		    ATTR_IDX(CACHED_MEMORY));
+		l1 = (pa & ~L1_OFFSET) | ATTR_AF | L1_BLOCK |
+		    ATTR_IDX(CACHED_MEMORY);
+#ifdef SMP
+		l1 |= ATTR_SH(ATTR_SH_IS);
+#endif
+		pmap_load_store(&l1p[l1_slot], l1);
 	}
 
-	cpu_dcache_wb_range((vm_offset_t)l1, PAGE_SIZE);
+	cpu_dcache_wb_range((vm_offset_t)l1p, PAGE_SIZE);
 	cpu_tlb_flushID();
 }
 
@@ -1853,6 +1856,9 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 		m = ma[i];
 		pa = VM_PAGE_TO_PHYS(m) | ATTR_AF |
 		    ATTR_IDX(m->md.pv_memattr) | ATTR_AP(ATTR_AP_RW) | L3_PAGE;
+#ifdef SMP
+		pa |= ATTR_SH(ATTR_SH_IS);
+#endif
 		l3 = pmap_l3(kernel_pmap, va);
 		pmap_load_store(l3, pa);
 		PTE_SYNC(l3);
@@ -3871,7 +3877,9 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 	if ((va >> 63) == 0)
 		new_l3 |= ATTR_AP(ATTR_AP_USER);
 	new_l3 |= ATTR_IDX(m->md.pv_memattr);
-
+#ifdef SMP
+	new_l3 |= ATTR_SH(ATTR_SH_IS);
+#endif
 	mpte = NULL;
 
 	lock = NULL;
@@ -4302,6 +4310,10 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 
 	pa = VM_PAGE_TO_PHYS(m) | ATTR_AF | ATTR_IDX(m->md.pv_memattr) |
 	    ATTR_AP(ATTR_AP_RW) | L3_PAGE;
+#ifdef SMP
+	pa |= ATTR_SH(ATTR_SH_IS);
+#endif
+
 #if 0
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		pa |= pg_nx;

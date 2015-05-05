@@ -609,10 +609,10 @@ pmap_l3(pmap_t pmap, vm_offset_t va)
  * They need to be atomic as the System MMU may write to the table at
  * the same time as the CPU.
  */
-#define	pmap_load_store(table, entry) atomic_swap_64(table, entry)
-#define	pmap_set(table, mask) atomic_set_64(table, mask)
-#define	pmap_load_clear(table) atomic_swap_64(table, 0)
-#define	pmap_load(table) (*table)
+#define	pmap_load_store(table, entry)	atomic_swap_64((table), (entry))
+#define	pmap_set(table, mask)		atomic_set_64((table), (mask))
+#define	pmap_load_clear(table)		atomic_swap_64((table), 0)
+#define	pmap_load(table)		(*(table))
 
 static __inline int
 pmap_is_current(pmap_t pmap)

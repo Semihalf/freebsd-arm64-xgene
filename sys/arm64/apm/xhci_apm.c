@@ -14,7 +14,7 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
-  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
@@ -33,26 +33,13 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_bus.h"
-
-#include <sys/stdint.h>
-#include <sys/stddef.h>
 #include <sys/param.h>
-#include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
-#include <sys/bus.h>
 #include <sys/module.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
 #include <sys/condvar.h>
-#include <sys/sysctl.h>
-#include <sys/sx.h>
-#include <sys/unistd.h>
-#include <sys/callout.h>
 #include <sys/malloc.h>
-#include <sys/priv.h>
 #include <sys/rman.h>
 
 #include <dev/ofw/ofw_bus.h>
@@ -61,10 +48,8 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
 
-#include <dev/usb/usb_core.h>
 #include <dev/usb/usb_busdma.h>
 #include <dev/usb/usb_process.h>
-#include <dev/usb/usb_util.h>
 
 #include <dev/usb/usb_controller.h>
 #include <dev/usb/usb_bus.h>
@@ -145,7 +130,7 @@ apm_xhci_attach(device_t self)
 
 	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (sc->sc_io_res == 0) {
-		device_printf(self, "Failed to map memory\n");
+		device_printf(self, "Failed to map IO memory\n");
 		apm_xhci_detach(self);
 		return (ENXIO);
 	}
@@ -205,7 +190,6 @@ apm_xhci_attach(device_t self)
 		apm_xhci_detach(self);
 		return (ENXIO);
 	}
-	device_printf(self, "Returning from attachment with success\n");
 
 	return (0);
 }
@@ -230,7 +214,7 @@ apm_xhci_detach(device_t self)
 		/*
 		 * only call xhci_detach() after xhci_init()
 		 */
-		/* TODO: there is nos substitution for this */
+		/* TODO: there is no substitution for this */
 		//xhci_detach(sc);
 
 		err = bus_teardown_intr(self, sc->sc_irq_res, sc->sc_intr_hdl);

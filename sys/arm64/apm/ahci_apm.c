@@ -434,8 +434,8 @@ apm_xgene_ahci_attach(device_t self)
 	int reg_regs= 0;
 	int ret = 0;
 
-	if (strcmp(device_get_nameunit(self), "ahci0"))
-		return (ENXIO);
+//	if (strcmp(device_get_nameunit(self), "ahci0"))
+		//return (ENXIO);
 
 	/* Set quirks */
 	ctl->quirks = AHCI_Q_XGENE_BUG;
@@ -534,10 +534,12 @@ apm_xgene_ahci_attach(device_t self)
 	val = ATA_INL(r_core, BUSCTLREG);
 	val &= ~(BUSCTLREG_MSTAWAUX_COHERENT_BYPASS | BUSCTLREG_MSTARAUX_COHERENT_BYPASS);
 	ATA_OUTL(r_core, BUSCTLREG, val);
+	ATA_INL(r_core, BUSCTLREG);
 
 	val = ATA_INL(r_core, IOFMSTRWAUX);
 	val |= IOFMSTRWAUX_WR_COHERENT | IOFMSTRWAUX_RD_COHERENT;
 	ATA_OUTL(r_core, IOFMSTRWAUX, val);
+	ATA_INL(r_core, IOFMSTRWAUX);
 
 	if (ahci_attach(self) != 0) {
 		device_printf(self, "Generic AHCI attach failed\n");

@@ -2139,7 +2139,7 @@ pmap_pinit(pmap_t pmap)
 	/*
 	 * allocate the l1 page
 	 */
-	while ((l1pt = vm_page_alloc(NULL, 0xdeadbeef, VM_ALLOC_NORMAL |
+	while ((l1pt = vm_page_alloc(NULL, 0, VM_ALLOC_NORMAL |
 	    VM_ALLOC_NOOBJ | VM_ALLOC_WIRED | VM_ALLOC_ZERO)) == NULL)
 		VM_WAIT;
 

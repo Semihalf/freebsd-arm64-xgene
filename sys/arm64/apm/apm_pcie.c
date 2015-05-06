@@ -271,12 +271,14 @@ DRIVER_MODULE(pcib, simplebus, apm_pcie_driver,
 apm_pcie_devclass, 0, 0);
 
 
-static inline uint32_t lower_32_bits(uint64_t val)
+static inline uint32_t
+lower_32_bits(uint64_t val)
 {
 	return ((uint32_t)(val & 0xFFFFFFFF));
 }
 
-static inline uint32_t higher_32_bits(uint64_t val)
+static inline uint32_t
+higher_32_bits(uint64_t val)
 {
 	return ((uint32_t)(val >> 32));
 }
@@ -428,11 +430,12 @@ apm_pcie_set_cfg_offset(struct apm_pcie_softc* sc, u_int bus)
 static bool
 apm_pcie_hide_root_cmplx_bars(struct apm_pcie_softc* sc, u_int bus, u_int reg)
 {
+	bool retval = false;
 	if ((bus == 0) && (sc->mode == ROOT_CMPLX) &&
 			((reg == PCIR_BAR(0)) || (reg == PCIR_BAR(1))))
-		return(true);
+		retval = true;
 
-	return (false);
+	return (retval);
 }
 
 /* clear BAR configuration which was done by firmware */

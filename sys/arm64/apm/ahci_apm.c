@@ -349,7 +349,6 @@ apm_xgene_ahci_phy_config(device_t dev, struct ahci_controller *ctl)
 		ATA_OUTL(ahci, PORTCFG, val);
 		ATA_INL(ahci, PORTCFG);
 
-
 		val = PORTPHY1CFG_ALIGNWAIT_SET(0, 0x0001fffe);
 		ATA_OUTL(ahci, PORTPHY1CFG, val);
 		ATA_INL(ahci, PORTPHY1CFG);
@@ -368,10 +367,8 @@ apm_xgene_ahci_phy_config(device_t dev, struct ahci_controller *ctl)
 
 		val = ATA_INL(ahci, PORTPHY5CFG);
 		PORTPHY5CFG_RTCHG_SET(val, 0x300);
-
 		ATA_OUTL(ahci, PORTPHY5CFG, val);
 		ATA_INL(ahci, PORTPHY5CFG);
-
 
 		val = ATA_INL(ahci, PORTAXICFG);
 		val |= PORTAXICFG_EN_CONTEXT;
@@ -521,16 +518,16 @@ apm_xgene_ahci_attach(device_t self)
 
 	ATA_OUTL(r_core, ERRINTSTATUSMASK, 0x00);
 	ATA_INL(r_core, ERRINTSTATUSMASK);
-	/* Clear all error flags */
-	ATA_OUTL(r_core, SLVRDERRATTRIBUTES, 0xffffffff);
-	ATA_OUTL(r_core, SLVWRERRATTRIBUTES, 0xffffffff);
-	ATA_OUTL(r_core, MSTRDERRATTRIBUTES, 0xffffffff);
-	ATA_OUTL(r_core, MSTWRERRATTRIBUTES, 0xffffffff);
 
 	/* Unmask all timeouts */
 	ATA_OUTL(r_axi, INT_SLV_TMOMASK, 0x00);
 	ATA_INL(r_axi, INT_SLV_TMOMASK);
 
+	/* Clear all error flags */
+	ATA_OUTL(r_core, SLVRDERRATTRIBUTES, 0xffffffff);
+	ATA_OUTL(r_core, SLVWRERRATTRIBUTES, 0xffffffff);
+	ATA_OUTL(r_core, MSTRDERRATTRIBUTES, 0xffffffff);
+	ATA_OUTL(r_core, MSTWRERRATTRIBUTES, 0xffffffff);
 
 	/* Bypass read/write coherency */
 	val = ATA_INL(r_core, BUSCTLREG);
@@ -550,17 +547,19 @@ apm_xgene_ahci_attach(device_t self)
 	}
 
 out:
-	if (ret != 0 && ctl->r_mem != NULL)
-		bus_release_resource(self, SYS_RES_MEMORY, 0, ctl->r_mem);
+	if (ret != 0) {
+		if (ctl->r_mem != NULL)
+			bus_release_resource(self, SYS_RES_MEMORY, 0, ctl->r_mem);
 
-	if (r_core != NULL)
-		bus_release_resource(self, SYS_RES_MEMORY, 1, r_core);
+		if (r_core != NULL)
+			bus_release_resource(self, SYS_RES_MEMORY, 1, r_core);
 
-	if (r_diag != NULL)
-		bus_release_resource(self, SYS_RES_MEMORY, 2, r_diag);
+		if (r_diag != NULL)
+			bus_release_resource(self, SYS_RES_MEMORY, 2, r_diag);
 
-	if (r_axi != NULL)
-		bus_release_resource(self, SYS_RES_MEMORY, 3, r_axi);
+		if (r_axi != NULL)
+			bus_release_resource(self, SYS_RES_MEMORY, 3, r_axi);
+	}
 
 	return (ret);
 }

@@ -29,8 +29,8 @@
  * $FreeBSD$
  */
 
-#ifndef	__ARM64_BUS_DMA_IMPL_H
-#define	__ARM64_BUS_DMA_IMPL_H
+#ifndef _MACHINE_BUS_DMA_IMPL_H_
+#define	_MACHINE_BUS_DMA_IMPL_H_
 
 struct bus_dma_tag_common {
 	struct bus_dma_impl *impl;

@@ -124,13 +124,13 @@ common_bus_dma_tag_create(struct bus_dma_tag_common *parent,
 	struct bus_dma_tag_common *common;
 
 	KASSERT(sz >= sizeof(struct bus_dma_tag_common), ("sz"));
+	/* Return a NULL tag on failure */
+	*dmat = NULL;
 	/* Basic sanity checking */
 	if (boundary != 0 && boundary < maxsegsz)
 		maxsegsz = boundary;
 	if (maxsegsz == 0)
 		return (EINVAL);
-	/* Return a NULL tag on failure */
-	*dmat = NULL;
 
 	newtag = malloc(sz, M_DEVBUF, M_ZERO | M_NOWAIT);
 	if (newtag == NULL) {

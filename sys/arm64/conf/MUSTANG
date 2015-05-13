@@ -118,7 +118,11 @@ device		firmware	# firmware assist module
 # PCIe support
 options         NEW_PCIB
 device		pci             # SoC PCIe support(NEW_PCIB option is required)
-device          ixgbe            
+#device          ixgbe   
+device		ix
+device		ixv
+device 		inet         
+options		APM_PCI_MSIX
 
 # The `bpf' device enables the Berkeley Packet Filter.
 # Be aware of the administrative consequences of enabling this!

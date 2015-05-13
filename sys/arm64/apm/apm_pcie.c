@@ -182,16 +182,13 @@ static struct resource_spec apm_pcie_mem_spec[] = {
 /*
  * Forward prototypes
  */
-static int apm_pcie_probe(device_t dev);
-static int apm_pcie_attach(device_t dev);
+static int apm_pcie_probe(device_t);
+static int apm_pcie_attach(device_t);
 
-static uint32_t apm_pcie_read_config(device_t dev, u_int bus, u_int slot,
-    u_int func, u_int reg, int bytes);
-static void apm_pcie_write_config(device_t dev, u_int bus, u_int slot,
-    u_int func, u_int reg, uint32_t val, int bytes);
-static int apm_pcie_maxslots(device_t dev);
-static int apm_pcie_read_ivar(device_t dev, device_t child, int index,
-    uintptr_t *result);
+static uint32_t apm_pcie_read_config(device_t,u_int,u_int,u_int,u_int,int);
+static void apm_pcie_write_config(device_t,u_int,u_int,u_int,u_int,uint32_t,int);
+static int apm_pcie_maxslots(device_t);
+static int apm_pcie_read_ivar(device_t, device_t,int,uintptr_t*);
 static int apm_pcie_write_ivar(device_t dev, device_t child, int index,
     uintptr_t value);
 static struct resource *apm_pcie_alloc_resource(device_t dev,
@@ -228,8 +225,15 @@ static void apm_pcie_setup_pims(struct apm_pcie_softc *sc, uint32_t pim_addr,
 static void apm_pcie_write_vendor_device_ids(struct apm_pcie_softc* sc);
 static void apm_pcie_linkup_status(struct apm_pcie_softc* sc);
 static bool apm_pcie_hide_root_cmplx_bars(struct apm_pcie_softc* sc, u_int bus, u_int reg);
+static int apm_pcie_setup_interrupt(device_t dev, device_t child, struct resource *irq,
+	    int flags, driver_filter_t *filter, driver_intr_t *intr, void *arg,
+	    void **cookiep);
 
-
+int apm_msix_alloc(int,int*);
+int apm_msix_map_msi(int,bus_addr_t*,uint32_t*);
+int apm_msix_release(int,int*);
+int apm_msix_setup_irq(device_t,device_t,struct resource*,int,driver_filter_t*,
+		driver_intr_t*,void*,void**);
 /*
  * Newbus interface declarations
  */
@@ -251,7 +255,7 @@ static device_method_t apm_pcie_methods[] = {
 
 	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
-	DEVMETHOD(bus_setup_intr,			bus_generic_setup_intr),
+	DEVMETHOD(bus_setup_intr,			apm_pcie_setup_interrupt),
 	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
 
 	DEVMETHOD_END
@@ -1237,7 +1241,7 @@ apm_pcie_alloc_resource(device_t dev,
 	case SYS_RES_MEMORY:
 		rm = &sc->pci_res.mem_rman;
 
-		if ((start == 0U) && (end == ~0UL)) {
+		if ((start == 0UL) && (end == ~0UL)) {
 			start = sc->pci_res.mem.cpu_addr;
 			end = sc->pci_res.mem.cpu_addr + sc->pci_res.mem.size - 1;
 			count = sc->pci_res.mem.size;
@@ -1281,26 +1285,26 @@ static int
 apm_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data)
 {
-	printdbg("%s","Not implemented yet...\n");
-	return (-1);
+	return (apm_msix_map_msi(irq,addr,data));
 }
 
 static int
 apm_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
 {
-	printdbg("%s","Not implemented yet!\n");
-	device_t bus;
-	bus = device_get_parent(pcib);
-
-	return (PCIB_ALLOC_MSIX(device_get_parent(bus), child, irq));
+	return (apm_msix_alloc(1, irq));
 }
 
 static int
 apm_pcie_release_msix(device_t pcib, device_t child, int irq)
 {
-	printdbg("%s","Not implemented yet...\n");
-	device_t bus;
+	return (apm_msix_release(1, &irq));
+}
 
-	bus = device_get_parent(pcib);
-	return (PCIB_RELEASE_MSIX(device_get_parent(bus), child, irq));
+static int
+apm_pcie_setup_interrupt(device_t dev, device_t child, struct resource *irq,
+	    int flags, driver_filter_t *filter, driver_intr_t *intr, void *arg,
+	    void **cookiep)
+{
+	return (apm_msix_setup_irq(dev, child, irq, flags,
+			filter, intr, arg, cookiep));
 }

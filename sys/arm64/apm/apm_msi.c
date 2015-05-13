@@ -77,9 +77,9 @@ struct apm_msix_softc {
 	struct resource *res;
 	struct rman	rman;
 	bus_addr_t	base_addr;
-	uint32_t	irq_min;
-	uint32_t	irq_max;
-	uint32_t	irq_count;
+	int	irq_min;
+	int	irq_max;
+	int	irq_count;
 	char	msi_bitmap[(NR_MSI_IRQS - 1)/sizeof(char) + 1];
 	struct mtx	msi_mtx;
 };
@@ -103,6 +103,7 @@ int apm_msix_release(int,int*);
 int apm_msix_setup_irq(device_t,device_t,struct resource*,int,driver_filter_t*,
 		driver_intr_t*,void*,void**);
 void apm_msix_handle_irq(void *);
+static int apm_msix_parse_fdt(struct apm_msix_softc*);
 
 static MALLOC_DEFINE(M_APM_MSIX, "msix", "APM MSI-X data structures");
 
@@ -113,6 +114,25 @@ static MALLOC_DEFINE(M_APM_MSIX, "msix", "APM MSI-X data structures");
 #else
 #define pr_debug(fmt,args...)
 #endif
+
+static device_method_t apm_msix_methods[] = {
+	DEVMETHOD(device_probe,			apm_msix_probe),
+	DEVMETHOD(device_attach,		apm_msix_attach),
+	DEVMETHOD_END
+};
+
+static driver_t apm_msix_driver = {
+	"pic",
+	apm_msix_methods,
+	sizeof(struct apm_msix_softc),
+};
+
+static devclass_t apm_msix_devclass;
+
+DRIVER_MODULE(pcib, ofwbus, apm_msix_driver,
+		apm_msix_devclass, 0, 0);
+DRIVER_MODULE(pcib, simplebus, apm_msix_driver,
+		apm_msix_devclass, 0, 0);
 
 static int
 apm_msix_probe(device_t self)
@@ -136,14 +156,15 @@ apm_msix_attach(device_t self)
 	struct resource_list_entry* rle;
 	phandle_t node;
 	bus_addr_t reg_base = 0, reg_size = 0;
-	int interrupts[2], interrupts_count = 0, rid;
+	int interrupts[NR_MSI_REG], interrupts_count = 0, rid;
 	u_int irq_index, j, offset, count;
 
 	sc = device_get_softc(self);
 	node = ofw_bus_get_node(self);
 	sc->dev = self;
 
-	if ((err = fdt_regsize(node, (u_long*)&reg_base, (u_long*)&reg_size))) {
+	err = fdt_regsize(node, (u_long*)&reg_base, (u_long*)&reg_size);
+	if (err) {
 		device_printf(self, "ERROR: Failed to resolve address space (err: %d)\n", err);
 		return (ENXIO);
 	}
@@ -175,6 +196,10 @@ apm_msix_attach(device_t self)
 	/* store base addr */
 	sc->base_addr = reg_base;
 
+	err = apm_msix_parse_fdt(sc);
+	if (err)
+		return (ENXIO);
+
 	/* set structures' memory */
 	memset(irq_data_tbl, 0, sizeof(irq_data_tbl));
 	memset(interrupts, 0, sizeof(interrupts));
@@ -182,7 +207,8 @@ apm_msix_attach(device_t self)
 
 	/* get resource list from FDT/OFW */
 	resource_list_init(&rl);
-	if ((err = ofw_bus_intr_to_rl(self, node, &rl))) {
+	err = ofw_bus_intr_to_rl(self, node, &rl);
+	if (err) {
 		device_printf(self, "ERROR: Failed to get interrupt data (err: %d)\n", err);
 		return (ENXIO);
 	}
@@ -199,12 +225,8 @@ apm_msix_attach(device_t self)
 	}
 	resource_list_free(&rl);
 
-	sc->irq_min = interrupts[0];
-	sc->irq_max = interrupts[1];
-	sc->irq_count = sc->irq_max - sc->irq_min + 1;
-
-	offset = interrupts[0] / IRQS_PER_MSI_REG;
-	count = interrupts[1] / IRQS_PER_MSI_REG;
+	offset = sc->irq_min / IRQS_PER_MSI_REG;
+	count = sc->irq_max / IRQS_PER_MSI_REG;
 
 	/* set global software context */
 	g_softc = sc;
@@ -234,9 +256,11 @@ apm_msix_alloc(int count, int *irq)
 	u_int start, i, irq_min;
 
 	/* count must be a power of 2 */
-	if (powerof2(count) == 0 || count > 8) {
+	if (powerof2(count) == 0 || count > 8)
 		return (EINVAL);
-	}
+
+	if (g_softc == NULL)
+		return (ENXIO);
 
 	irq_min = g_softc->irq_min;
 	mtx_lock(&g_softc->msi_mtx);
@@ -275,6 +299,9 @@ apm_msix_map_msi(int irq, bus_addr_t* addr, uint32_t* data)
 	device_t dev;
 	u_int virt_irq;
 
+	if (g_softc == NULL)
+		return (ENXIO);
+
 	dev = g_softc->dev;
 
 	/* validate IRQ number */
@@ -303,6 +330,9 @@ int
 apm_msix_release(int count, int *irq)
 {
 	int i;
+
+	if (g_softc == NULL)
+		return (ENXIO);
 
 	mtx_lock(&g_softc->msi_mtx);
 
@@ -359,8 +389,10 @@ apm_msix_handle_irq(void *arg)
 	uint32_t msir_value, intr_index, msi_intr_reg_value;
 	u_int virt_irq;
 
-	if (arg == NULL) {
-		panic("Interrupt controller error\n");
+	if (arg == NULL || g_softc == NULL) {
+		printf("%s() ERROR: received interrupt w/o data or"
+				"software context is not set\n", __func__);
+		return;
 	}
 	irq_data = (struct apm_irq_data*)arg;
 
@@ -425,13 +457,14 @@ apm_msix_setup_hwirq(device_t dev, int offset, int irq)
 	err = arm_setup_intr(device_get_nameunit(dev), NULL, apm_msix_handle_irq, (void*)irq_data, irq, flags, NULL);
 	if (err)
 		device_printf(dev, "ERROR: IRQ%d setup failed (err=%d)\n", irq, err);
-	else
+	else {
 		device_printf(dev, "MSI-X: hw setup of IRQ%d\n", irq);
 
-	/* config HW IRQ to be triggered by edge */
-	err = arm_config_intr(irq, INTR_TRIGGER_EDGE, INTR_POLARITY_HIGH);
-	if (err)
-		device_printf(dev, "ERROR: unable to configure IRQ%d (err=%d)\n", irq, err);
+		/* config HW IRQ to be triggered by edge */
+		err = arm_config_intr(irq, INTR_TRIGGER_EDGE, INTR_POLARITY_HIGH);
+		if (err)
+			device_printf(dev, "ERROR: unable to configure IRQ%d (err=%d)\n", irq, err);
+	}
 
 	return (err);
 }
@@ -468,4 +501,48 @@ apm_msix_remove(device_t dev)
 		if (irq_data_tbl[i] != NULL)
 			free(irq_data_tbl[i], M_APM_MSIX);
 	}
+
+	return;
+}
+
+static int
+apm_msix_parse_fdt(struct apm_msix_softc *sc)
+{
+	int cells_count;
+	pcell_t *addr_buf;
+	phandle_t node;
+
+	node = ofw_bus_get_node(sc->dev);
+
+	/*
+	 * Get 'msi-available-ranges' property
+	 */
+	cells_count = OF_getprop_alloc(node, "msi-available-ranges",
+		sizeof(pcell_t), (void **)&addr_buf);
+	if (cells_count == -1 || cells_count > 2) {
+		device_printf(sc->dev, "ERROR: wrong FDT 'msi-available-ranges' property\n");
+		return (ENXIO);
+	}
+
+	/* get min IRQ number */
+	sc->irq_min = fdt_data_get((void *)addr_buf++, 1);
+	/* get max IRQ number*/
+	sc->irq_max = fdt_data_get((void *)addr_buf, 1);
+
+	/* sanity check of data */
+	if ((sc->irq_min < 0) ||
+		(sc->irq_max - sc->irq_min > NR_MSI_IRQS) ||
+		(sc->irq_max < sc->irq_min)) {
+		device_printf(sc->dev, "ERROR: Incorrect range of IRQ numbers in FDT"
+				"'msi-available-ranges' property\n");
+		return (EINVAL);
+	}
+	sc->irq_count = sc->irq_max - sc->irq_min + 1;
+
+	if (bootverbose) {
+		device_printf(sc->dev, "Read from FDT: irq_min = %d, irq_max = %d, count = %d\n",
+				sc->irq_min, sc->irq_max, sc->irq_count);
+	}
+
+	return (0);
 }

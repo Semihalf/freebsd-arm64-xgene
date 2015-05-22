@@ -228,7 +228,9 @@ static bool apm_pcie_hide_root_cmplx_bars(struct apm_pcie_softc* sc, u_int bus, 
 static int apm_pcie_setup_interrupt(device_t dev, device_t child, struct resource *irq,
 	    int flags, driver_filter_t *filter, driver_intr_t *intr, void *arg,
 	    void **cookiep);
-
+static int
+		apm_pcie_alloc_msi(device_t dev, device_t child, int count,
+						   int maxcount __unused, int *irqs);
 int apm_msix_alloc(int,int*);
 int apm_msix_map_msi(int,bus_addr_t*,uint32_t*);
 int apm_msix_release(int,int*);
@@ -247,6 +249,7 @@ static device_method_t apm_pcie_methods[] = {
 	DEVMETHOD(pcib_map_msi,			apm_pcie_map_msi),
 	DEVMETHOD(pcib_alloc_msix,		apm_pcie_alloc_msix),
 	DEVMETHOD(pcib_release_msix,	apm_pcie_release_msix),
+	DEVMETHOD(pcib_alloc_msi,		apm_pcie_alloc_msi),
 
 	DEVMETHOD(bus_read_ivar,			apm_pcie_read_ivar),
 	DEVMETHOD(bus_write_ivar,			apm_pcie_write_ivar),
@@ -1107,6 +1110,7 @@ apm_pcie_attach(device_t self)
 	/* Set up APM specific PCIe configuration */
 	apm_pcie_setup(sc);
 
+	/* Enumerate PCIe devices */
 	maxslot = 0;
 	apm_pcib_init(sc, sc->busnr, maxslot);
 
@@ -1229,6 +1233,7 @@ apm_pcie_alloc_resource(device_t dev,
     device_t child, int type, int *rid, u_long start, u_long end,
     u_long count, u_int flags)
 {
+	static int irq_num = 226;
 	struct apm_pcie_softc *sc = device_get_softc(dev);
 	struct rman *rm = NULL;
 	struct resource *res;
@@ -1247,6 +1252,17 @@ apm_pcie_alloc_resource(device_t dev,
 			count = sc->pci_res.mem.size;
 		}
 		break;
+	case SYS_RES_IRQ:
+		printdbg("called with start=%ld end=%ld cnt=%ld\n",
+				start, end, count);
+
+		start = irq_num;
+		end = irq_num + count - 1;
+			irq_num += count;
+
+		printdbg("alloc with start=%ld, end=%ld, cnt=%ld\n",
+				start, end, count);
+
 	default:
 		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), dev,
 			type, rid, start, end, count, flags));
@@ -1285,19 +1301,32 @@ static int
 apm_pcie_map_msi(device_t pcib, device_t child, int irq,
     uint64_t *addr, uint32_t *data)
 {
-	return (apm_msix_map_msi(irq,addr,data));
+	printdbg("enter with irq=%d\n", irq);
+	return (108877);
+	/*
+	return (apm_msix_map_msi(irq, addr, data));*/
+}
+
+static int
+apm_pcie_alloc_msi(device_t dev, device_t child, int count,
+				   int maxcount __unused, int *irqs)
+{
+	printdbg("enter with cnt=%d\n", count);
+
+	return (apm_msix_alloc(count, irqs));
 }
 
 static int
 apm_pcie_alloc_msix(device_t pcib, device_t child, int *irq)
 {
-	return (apm_msix_alloc(1, irq));
+	return (109999);
+			/*apm_msix_alloc(1, irq));*/
 }
 
 static int
 apm_pcie_release_msix(device_t pcib, device_t child, int irq)
 {
-	return (apm_msix_release(1, &irq));
+	return (209999); /*apm_msix_release(1, &irq));*/
 }
 
 static int
@@ -1305,6 +1334,7 @@ apm_pcie_setup_interrupt(device_t dev, device_t child, struct resource *irq,
 	    int flags, driver_filter_t *filter, driver_intr_t *intr, void *arg,
 	    void **cookiep)
 {
+	printdbg("enter\n");
 	return (apm_msix_setup_irq(dev, child, irq, flags,
 			filter, intr, arg, cookiep));
 }

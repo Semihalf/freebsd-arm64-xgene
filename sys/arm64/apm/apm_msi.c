@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #define IRQS_PER_MSI_REG	256
 #define NR_MSI_IRQS		(NR_MSI_REG * IRQS_PER_MSI_REG)
 
+#define MSI_IRQ_BASE	0x7A000000
 /* PCIe MSI Index Registers */
 #define MSI0IR0			0x000000
 #define MSIFIR7			0x7F0000
@@ -75,7 +76,9 @@ __FBSDID("$FreeBSD$");
 struct apm_msix_softc {
 	device_t	dev;
 	struct resource *res;
+	struct resource *irq_res;
 	struct rman	rman;
+	struct rman irq_rman;
 	bus_addr_t	base_addr;
 	int	irq_min;
 	int	irq_max;
@@ -84,6 +87,8 @@ struct apm_msix_softc {
 	struct mtx	msi_mtx;
 };
 
+/* this structure will be passed to GIC as an argument
+ * which will be considered with physical interrupt */
 struct apm_irq_data {
 	int offset;
 };
@@ -122,25 +127,23 @@ static device_method_t apm_msix_methods[] = {
 };
 
 static driver_t apm_msix_driver = {
-	"pic",
+	"msix",
 	apm_msix_methods,
 	sizeof(struct apm_msix_softc),
 };
 
 static devclass_t apm_msix_devclass;
 
-DRIVER_MODULE(pcib, ofwbus, apm_msix_driver,
-		apm_msix_devclass, 0, 0);
-DRIVER_MODULE(pcib, simplebus, apm_msix_driver,
+DRIVER_MODULE(msix, simplebus, apm_msix_driver,
 		apm_msix_devclass, 0, 0);
 
 static int
 apm_msix_probe(device_t self)
 {
-	if (0 != ofw_bus_status_okay(self))
+	if (!ofw_bus_status_okay(self))
 		return (ENXIO);
 
-	if (0 != ofw_bus_is_compatible(self, "xgene,gic-msi"))
+	if (!ofw_bus_is_compatible(self, "xgene,gic-msi"))
 		return (ENXIO);
 
 	device_set_desc(self, "APM MSI-X Controller");
@@ -150,6 +153,7 @@ apm_msix_probe(device_t self)
 static int
 apm_msix_attach(device_t self)
 {
+	pr_debug("enter\n");
 	int err;
 	struct apm_msix_softc* sc;
 	struct resource_list rl;
@@ -169,20 +173,37 @@ apm_msix_attach(device_t self)
 		return (ENXIO);
 	}
 
-	/* allocate resource */
+	/* allocate resources */
 	sc->res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (sc->res == NULL) {
-		device_printf(self, "ERROR: Failed to allocate device resource (err=%d)\n", err);
+		device_printf(self, "ERROR: Failed to allocate device resources\n");
+		return (ENXIO);
+	}
+
+	rid = 0;
+	sc->irq_res = bus_alloc_resource_any(self, SYS_RES_IRQ, &rid,
+											RF_SHAREABLE | RF_ACTIVE);
+	if (sc->irq_res == NULL) {
+		device_printf(self, "ERROR: Failed to allocate IRQ resources\n");
 		return (ENXIO);
 	}
 
 	/* initialize and manage memory region */
 	sc->rman.rm_type = RMAN_ARRAY;
-	sc->rman.rm_descr = "PCI MSI-X resource";
+	sc->rman.rm_descr = "PCI MSI-X IRQ terminate registers";
 	err = rman_init(&sc->rman);
 	if (err) {
 		device_printf(self, "ERROR: rman_init() for %s failed (err: %d)\n",
 				sc->rman.rm_descr, err);
+		return (err);
+	}
+
+	sc->irq_rman.rm_type = RMAN_ARRAY;
+	sc->rman.rm_descr = "PCI MSI-X IRQ trigger registers";
+	err = rman_init(&sc->irq_rman);
+	if (err) {
+		device_printf(self, "ERROR: rman_init() for %s failed (err: %d)\n",
+					  sc->rman.rm_descr, err);
 		return (err);
 	}
 
@@ -193,6 +214,15 @@ apm_msix_attach(device_t self)
 		rman_fini(&sc->rman);
 		return (err);
 	}
+
+	err = rman_manage_region(&sc->irq_rman, MSI_IRQ_BASE, 0xcf0000);
+	if (err) {
+		device_printf(self, "ERROR: rman_manage_region() for %s failed (err: %d)\n",
+					  sc->irq_rman.rm_descr, err);
+		rman_fini(&sc->irq_rman);
+		return (err);
+	}
+
 	/* store base addr */
 	sc->base_addr = reg_base;
 
@@ -235,12 +265,12 @@ apm_msix_attach(device_t self)
 	mtx_init(&sc->msi_mtx, "msi_mtx", NULL, MTX_DEF);
 
 	/* set up hardware IRQ handling */
-	for (irq_index = 0, j = 0; j < count; j++, irq_index++) {
+	for (irq_index = 48, j = 0; j < count; j++, irq_index++) {
 		err = apm_msix_setup_hwirq(self, offset + j, irq_index);
 		if (err)
 			goto error;
 	}
-	device_printf(self, "MSI-X: addr 0x%lx, size 0x%lx, IRQ %d-%d\n",
+	device_printf(self, "base address 0x%lx, size 0x%lx, MSI(X) IRQs %d-%d\n",
 			sc->base_addr, reg_size, sc->irq_min, sc->irq_max);
 
 	return (bus_generic_attach(self));
@@ -253,7 +283,13 @@ error:
 int
 apm_msix_alloc(int count, int *irq)
 {
+	printf("%s(): enter\n", __func__);
+	bus_write_4(g_softc->res, 0x0, 0x1);
+	printf("%s(): leave\n", __func__);
+	return (103923);
+
 	u_int start, i, irq_min;
+	pr_debug("enter\n");
 
 	/* count must be a power of 2 */
 	if (powerof2(count) == 0 || count > 8)
@@ -286,7 +322,11 @@ apm_msix_alloc(int count, int *irq)
 	}
 	mtx_unlock(&g_softc->msi_mtx);
 
-	device_printf(g_softc->dev, "MSI-X: allocated IRQ %d-%d\n",
+	if (count == 1)
+		device_printf(g_softc->dev, "allocated MSI(X) IRQ%d\n",
+			irq_min + start);
+	else
+		device_printf(g_softc->dev, "allocated MSI(X) IRQ%d-%d\n",
 			irq_min + start,
 			irq_min + start + count-1);
 
@@ -298,6 +338,7 @@ apm_msix_map_msi(int irq, bus_addr_t* addr, uint32_t* data)
 {
 	device_t dev;
 	u_int virt_irq;
+	pr_debug("enter\n");
 
 	if (g_softc == NULL)
 		return (ENXIO);
@@ -307,12 +348,12 @@ apm_msix_map_msi(int irq, bus_addr_t* addr, uint32_t* data)
 	/* validate IRQ number */
 	if ((irq > g_softc->irq_max) || (irq < g_softc->irq_min) ||
 			isclr(&g_softc->msi_bitmap, irq - g_softc->irq_min)) {
-		device_printf(dev, "ERROR: invalid IRQ %d\n", irq);
+		device_printf(dev, "ERROR: invalid MSI(X) IRQ%d\n", irq);
 		return (EINVAL);
 	}
 
-	*addr = g_softc->base_addr + irq;
-	*data = 0;
+	*addr = MSI_IRQ_BASE + irq * 0x10000;
+	*data = 1; /* writting 1 to register triggers interrupt */
 
 	virt_irq = VIRT_IRQ_OFFSET + irq;
 	if (arm_config_intr(virt_irq, INTR_TRIGGER_EDGE, INTR_POLARITY_HIGH)) {
@@ -320,7 +361,7 @@ apm_msix_map_msi(int irq, bus_addr_t* addr, uint32_t* data)
 		return (EINVAL);
 	}
 
-	device_printf(dev, "MSI mapping: IRQ %d, addr %#lx, data %#x\n",
+	device_printf(dev, "MSI(X) mapping: IRQ%d, addr %#lx, data %#x\n",
 			irq, *addr, *data);
 
 	return (0);
@@ -330,6 +371,7 @@ int
 apm_msix_release(int count, int *irq)
 {
 	int i;
+	pr_debug("enter\n");
 
 	if (g_softc == NULL)
 		return (ENXIO);
@@ -341,6 +383,7 @@ apm_msix_release(int count, int *irq)
 
 	mtx_unlock(&g_softc->msi_mtx);
 
+	pr_debug("end\n");
 	return (0);
 }
 
@@ -366,6 +409,7 @@ apm_msix_dispatch_virt_irq(u_int virt_irq)
 {
 	u_int irq;
 	struct trapframe frame;
+	pr_debug("enter\n");
 
 	/* Check if this IRQ is mapped */
 	mtx_lock(&g_softc->msi_mtx);
@@ -378,6 +422,7 @@ apm_msix_dispatch_virt_irq(u_int virt_irq)
 
 	irq = VIRT_IRQ_OFFSET + virt_irq;
 	arm_dispatch_intr(irq, &frame);
+	pr_debug("end\n");
 }
 
 void
@@ -388,6 +433,7 @@ apm_msix_handle_irq(void *arg)
 	bus_addr_t msi_intr_reg;
 	uint32_t msir_value, intr_index, msi_intr_reg_value;
 	u_int virt_irq;
+	pr_debug("enter\n");
 
 	if (arg == NULL || g_softc == NULL) {
 		printf("%s() ERROR: received interrupt w/o data or"
@@ -396,26 +442,29 @@ apm_msix_handle_irq(void *arg)
 	}
 	irq_data = (struct apm_irq_data*)arg;
 
-	/* get MSI-X IRQ register */
+	/* get HW IRQ number: 0-16 */
 	msi_intr_reg = irq_data->offset;
-	/* read value from MSI-X IRQ register */
+	/* read which registers in group was set */
 	msi_intr_reg_value = apm_msi_intr_read(g_softc->base_addr, msi_intr_reg);
 
 	pr_debug("MSI-X: read value %#x from register %#lx\n", msi_intr_reg_value, msi_intr_reg);
 
 	/* handle all set interrupts */
 	while (msi_intr_reg_value != 0) {
-		/*  */
+		/* get concrete register from registers' group */
 		msir_index = ffs(msi_intr_reg_value) - 1;
 
+		/* read value from register -> what interrupt number was written into it */
 		msir_value = apm_msir_read(g_softc->base_addr, msi_intr_reg, msir_index);
 
 		while (msir_value != 0) {
 			/* proceed with first set bit */
 			intr_index = ffs(msir_value) - 1;
 			/* calculate 'virtual' interrupt */
-			virt_irq = msir_index * IRQS_PER_MSI_INDEX * NR_MSI_REG +
-				intr_index * NR_MSI_REG + msi_intr_reg;
+			virt_irq =
+				intr_index * NR_MSI_REG + /* Message Interrupt number */
+				msir_index * IRQS_PER_MSI_INDEX * NR_MSI_REG + /* group */
+				msi_intr_reg; /* hw_irq */
 			/* dispatch interrupt to proper device */
 			if (virt_irq != 0)
 				apm_msix_dispatch_virt_irq(virt_irq);
@@ -425,6 +474,7 @@ apm_msix_handle_irq(void *arg)
 		/* reset current MSI-X register bit*/
 		msi_intr_reg_value &= ~(1 << msir_index);
 	}
+	pr_debug("end\n");
 	return;
 }
 
@@ -433,6 +483,7 @@ apm_msix_setup_hwirq(device_t dev, int offset, int irq)
 {
 	int flags = INTR_TYPE_AV, err;
 	struct apm_irq_data *irq_data = NULL;
+	pr_debug("enter\n");
 
 	if (irq < 0) {
 		device_printf(dev, "ERROR: Cannot translate IRQ index %d\n", irq);
@@ -465,7 +516,7 @@ apm_msix_setup_hwirq(device_t dev, int offset, int irq)
 		if (err)
 			device_printf(dev, "ERROR: unable to configure IRQ%d (err=%d)\n", irq, err);
 	}
-
+	pr_debug("end\n");
 	return (err);
 }
 
@@ -474,6 +525,7 @@ apm_msix_setup_irq(device_t dev, device_t child, struct resource *res, int flags
 	    driver_filter_t *filt, driver_intr_t *intr, void *arg, void **cookiep)
 {
 	int virt_irq, error;
+	pr_debug("enter\n");
 
 	if ((rman_get_flags(res) & RF_SHAREABLE) == 0)
 		flags |= INTR_EXCL;
@@ -484,10 +536,13 @@ apm_msix_setup_irq(device_t dev, device_t child, struct resource *res, int flags
 		return (error);
 
 	/* This IRQ will be considered as 'virtual' */
-	virt_irq = VIRT_IRQ_OFFSET + rman_get_start(res);
+	virt_irq = rman_get_start(res); /* + VIRT_IRQ_OFFSET */
+	pr_debug("irq_req = %d\n", virt_irq);
 
 	error = arm_setup_intr(device_get_nameunit(child), filt, intr,
 		arg, virt_irq, flags, cookiep);
+
+	pr_debug("end (err=%d)\n", error);
 
 	return (error);
 }
@@ -496,12 +551,15 @@ static void
 apm_msix_remove(device_t dev)
 {
 	int i;
+	pr_debug("enter\n");
 
 	for (i = 0; i < NR_MSI_REG; i++) {
 		if (irq_data_tbl[i] != NULL)
 			free(irq_data_tbl[i], M_APM_MSIX);
+			irq_data_tbl[i] = NULL;
 	}
 
+	pr_debug("end\n");
 	return;
 }
 
@@ -511,6 +569,7 @@ apm_msix_parse_fdt(struct apm_msix_softc *sc)
 	int cells_count;
 	pcell_t *addr_buf;
 	phandle_t node;
+	pr_debug("enter\n");
 
 	node = ofw_bus_get_node(sc->dev);
 

@@ -280,13 +280,14 @@ __FBSDID("$FreeBSD$");
 
 static device_probe_t xgene_ahci_probe;
 static device_attach_t xgene_ahci_attach;
+static device_detach_t xgene_ahci_detach;
 static device_suspend_t xgene_ahci_suspend;
 static device_resume_t xgene_ahci_resume;
 
 static device_method_t ahci_methods[] = {
 	DEVMETHOD(device_probe,			xgene_ahci_probe),
 	DEVMETHOD(device_attach,		xgene_ahci_attach),
-	DEVMETHOD(device_detach,		ahci_detach),
+	DEVMETHOD(device_detach,		xgene_ahci_detach),
 	DEVMETHOD(device_suspend,		xgene_ahci_suspend),
 	DEVMETHOD(device_resume,		xgene_ahci_resume),
 
@@ -545,28 +546,45 @@ xgene_ahci_attach(device_t self)
 	ATA_OUTL(r_core, IOFMSTRWAUX, val);
 	ATA_INL(r_core, IOFMSTRWAUX);
 
-	if (ahci_attach(self) != 0) {
+	ret = ahci_attach(self);
+	if (ret != 0) {
 		device_printf(self, "Generic AHCI attach failed\n");
-		ret = ENXIO;
 		goto out;
 	}
 
 out:
+	/* Free all helper resources needed for configuration */
+	if (r_core != NULL)
+		bus_release_resource(self, SYS_RES_MEMORY, 1, r_core);
+	if (r_diag != NULL)
+		bus_release_resource(self, SYS_RES_MEMORY, 2, r_diag);
+	if (r_axi != NULL)
+		bus_release_resource(self, SYS_RES_MEMORY, 3, r_axi);
+
 	if (ret != 0) {
+		/*
+		 * If we are here this means error.
+		 * Free remaining resources and return appropriate error number.
+		 */
 		if (ctl->r_mem != NULL) {
 			bus_release_resource(self, SYS_RES_MEMORY, 0,
 			    ctl->r_mem);
 		}
-
-		if (r_core != NULL)
-			bus_release_resource(self, SYS_RES_MEMORY, 1, r_core);
-
-		if (r_diag != NULL)
-			bus_release_resource(self, SYS_RES_MEMORY, 2, r_diag);
-
-		if (r_axi != NULL)
-			bus_release_resource(self, SYS_RES_MEMORY, 3, r_axi);
+		return (ret);
 	}
 
-	return (ret);
+	return (0);
+}
+
+static int
+xgene_ahci_detach(device_t self)
+{
+	struct ahci_controller *ctl;
+
+	ctl = device_get_softc(self);
+
+	if (ctl->r_mem != NULL)
+		bus_release_resource(self, SYS_RES_MEMORY, 0, ctl->r_mem);
+
+	return (ahci_detach(self));
 }

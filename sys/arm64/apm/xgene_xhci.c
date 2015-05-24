@@ -124,6 +124,8 @@ xgene_xhci_attach(device_t self)
 	int err;
 	int rid;
 
+	err = 0;
+
 	sc->sc_bus.parent = self;
 	sc->sc_bus.devices = sc->sc_devices;
 	sc->sc_bus.devices_max = XHCI_MAX_DEVICES;
@@ -133,8 +135,8 @@ xgene_xhci_attach(device_t self)
 	    RF_ACTIVE);
 	if (sc->sc_io_res == 0) {
 		device_printf(self, "Failed to map IO memory\n");
-		xgene_xhci_detach(self);
-		return (ENXIO);
+		err = ENXIO;
+		goto error;
 	}
 
 	sc->sc_io_tag = rman_get_bustag(sc->sc_io_res);
@@ -146,21 +148,16 @@ xgene_xhci_attach(device_t self)
 	    RF_SHAREABLE | RF_ACTIVE);
 	if (sc->sc_irq_res == NULL) {
 		device_printf(self, "Failed to allocate IRQ\n");
-		xgene_xhci_detach(self);
-		return (ENXIO);
+		err = ENXIO;
+		goto error;
 	}
 
-	sc->sc_bus.bdev = device_add_child(self, "usbus", -1);
-	if (sc->sc_bus.bdev == 0) {
-		device_printf(self, "Failed to add USB device\n");
-		xgene_xhci_detach(self);
-		return (ENXIO);
+	err = xhci_init(sc, self, 0);
+	if (err != 0) {
+		device_printf(self, "Failed to init XHCI, with error %d\n", err);
+		err = ENXIO;
+		goto error;
 	}
-
-	device_set_ivars(sc->sc_bus.bdev, &sc->sc_bus);
-
-	sprintf(sc->sc_vendor, XHCI_HC_VENDOR);
-	device_set_desc(sc->sc_bus.bdev, XHCI_HC_DEVSTR);
 
 	err = bus_setup_intr(self, sc->sc_irq_res, INTR_TYPE_BIO | INTR_MPSAFE,
 	    NULL, (driver_intr_t *)xhci_interrupt, sc, &sc->sc_intr_hdl);
@@ -168,34 +165,53 @@ xgene_xhci_attach(device_t self)
 	if (err != 0) {
 		device_printf(self, "Failed to setup IRQ, with error %d\n", err);
 		sc->sc_intr_hdl = NULL;
-		xgene_xhci_detach(self);
-		return (err);
+		err = ENXIO;
+		goto error;
 	}
 
-	err = xhci_init(sc, self, 0);
+	sc->sc_bus.bdev = device_add_child(self, "usbus", -1);
+	if (sc->sc_bus.bdev == 0) {
+		device_printf(self, "Failed to add USB device\n");
+		err = ENXIO;
+		goto error;
+	}
+
+	device_set_ivars(sc->sc_bus.bdev, &sc->sc_bus);
+	sprintf(sc->sc_vendor, XHCI_HC_VENDOR);
+
+	/*
+	 * Restart (stop & start) the controller
+	 * to put it into a well defined state.
+	 */
+	err = xhci_halt_controller(sc);
 	if (err != 0) {
-		device_printf(self, "Failed to init XHCI, with error %d\n", err);
-		xgene_xhci_detach(self);
-		return (err);
+		device_printf(self,
+		    "Failed to stop XHCI controller, with error %d\n", err);
+		err = ENXIO;
+		goto error;
 	}
-
 	err = xhci_start_controller(sc);
 	if (err != 0) {
 		device_printf(self,
 		    "Failed to start XHCI controller, with error %d\n", err);
-		xgene_xhci_detach(self);
-		return (err);
+		err = ENXIO;
+		goto error;
 	}
 
 	err = device_probe_and_attach(sc->sc_bus.bdev);
 	if (err != 0) {
 		device_printf(self, "Failed to initialize USB, with error %d\n",
 		    err);
-		xgene_xhci_detach(self);
-		return (err);
+		err = ENXIO;
+		goto error;
 	}
 
 	return (0);
+
+error:
+	xgene_xhci_detach(self);
+
+	return (err);
 }
 
 static int
@@ -213,6 +229,8 @@ xgene_xhci_detach(device_t self)
 
 	/* during module unload there are lots of children leftover */
 	device_delete_children(self);
+
+	xhci_halt_controller(sc);
 
 	if (sc->sc_irq_res != NULL && sc->sc_intr_hdl != NULL) {
 		err = bus_teardown_intr(self, sc->sc_irq_res, sc->sc_intr_hdl);
@@ -233,7 +251,8 @@ xgene_xhci_detach(device_t self)
 		sc->sc_io_res = NULL;
 	}
 
-	usb_bus_mem_free_all(&sc->sc_bus, &xhci_iterate_hw_softc);
+	/* Destroy remaining data and free USB memory */
+	xhci_uninit(sc);
 
 	return (0);
 }

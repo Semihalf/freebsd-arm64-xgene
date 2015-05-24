@@ -6194,6 +6194,9 @@ pmap_activate(struct thread *td)
 #endif
 	td->td_pcb->pcb_l1addr = vtophys(pmap->pm_l1);
 	__asm __volatile("msr ttbr0_el1, %0" : : "r"(td->td_pcb->pcb_l1addr));
+	/* Invalidate previous map in TLB */
+	isb();
+	pmap_invalidate_all(pmap);
 #if 0
 	load_cr3(pmap->pm_cr3);
 	PCPU_SET(curpmap, pmap);

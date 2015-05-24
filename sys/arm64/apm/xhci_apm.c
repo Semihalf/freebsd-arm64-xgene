@@ -59,15 +59,15 @@ __FBSDID("$FreeBSD$");
 #define	XHCI_HC_DEVSTR		"USB 3.0 XHCI Platform Integrated controller"
 #define	XHCI_HC_VENDOR		"APM"
 
-static device_attach_t apm_xhci_attach;
-static device_detach_t apm_xhci_detach;
-static device_shutdown_t apm_xhci_shutdown;
-static device_suspend_t apm_xhci_suspend;
-static device_resume_t apm_xhci_resume;
+static device_attach_t xgene_xhci_attach;
+static device_detach_t xgene_xhci_detach;
+static device_shutdown_t xgene_xhci_shutdown;
+static device_suspend_t xgene_xhci_suspend;
+static device_resume_t xgene_xhci_resume;
 
 /* XHCI HC regs start at this offset within USB range */
 static int
-apm_xhci_suspend(device_t self)
+xgene_xhci_suspend(device_t self)
 {
 	xhci_softc_t *sc = device_get_softc(self);
 	int err;
@@ -80,7 +80,7 @@ apm_xhci_suspend(device_t self)
 }
 
 static int
-apm_xhci_resume(device_t self)
+xgene_xhci_resume(device_t self)
 {
 	xhci_softc_t *sc = device_get_softc(self);
 	int err;
@@ -93,7 +93,7 @@ apm_xhci_resume(device_t self)
 }
 
 static int
-apm_xhci_shutdown(device_t self)
+xgene_xhci_shutdown(device_t self)
 {
 	xhci_softc_t *sc = device_get_softc(self);
 	int err;
@@ -106,7 +106,7 @@ apm_xhci_shutdown(device_t self)
 }
 
 static int
-apm_xhci_probe(device_t self)
+xgene_xhci_probe(device_t self)
 {
 	if (!ofw_bus_status_okay(self) ||
 		!ofw_bus_is_compatible(self, "xhci-platform"))
@@ -118,20 +118,22 @@ apm_xhci_probe(device_t self)
 }
 
 static int
-apm_xhci_attach(device_t self)
+xgene_xhci_attach(device_t self)
 {
 	xhci_softc_t *sc = device_get_softc(self);
-	int err = 0;
-	int rid = 0;
+	int err;
+	int rid;
 
 	sc->sc_bus.parent = self;
 	sc->sc_bus.devices = sc->sc_devices;
 	sc->sc_bus.devices_max = XHCI_MAX_DEVICES;
 
-	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	rid = 0;
+	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE);
 	if (sc->sc_io_res == 0) {
 		device_printf(self, "Failed to map IO memory\n");
-		apm_xhci_detach(self);
+		xgene_xhci_detach(self);
 		return (ENXIO);
 	}
 
@@ -144,14 +146,14 @@ apm_xhci_attach(device_t self)
 	    RF_SHAREABLE | RF_ACTIVE);
 	if (sc->sc_irq_res == NULL) {
 		device_printf(self, "Failed to allocate IRQ\n");
-		apm_xhci_detach(self);
+		xgene_xhci_detach(self);
 		return (ENXIO);
 	}
 
 	sc->sc_bus.bdev = device_add_child(self, "usbus", -1);
 	if (sc->sc_bus.bdev == 0) {
 		device_printf(self, "Failed to add USB device\n");
-		apm_xhci_detach(self);
+		xgene_xhci_detach(self);
 		return (ENXIO);
 	}
 
@@ -166,36 +168,38 @@ apm_xhci_attach(device_t self)
 	if (err != 0) {
 		device_printf(self, "Failed to setup IRQ, with error %d\n", err);
 		sc->sc_intr_hdl = NULL;
-		apm_xhci_detach(self);
+		xgene_xhci_detach(self);
 		return (err);
 	}
 
 	err = xhci_init(sc, self, 0);
 	if (err != 0) {
 		device_printf(self, "Failed to init XHCI, with error %d\n", err);
-		apm_xhci_detach(self);
-		return (ENXIO);
+		xgene_xhci_detach(self);
+		return (err);
 	}
 
 	err = xhci_start_controller(sc);
 	if (err != 0) {
-		device_printf(self, "Failed to start XHCI controller, with error %d\n", err);
-		apm_xhci_detach(self);
-		return (ENXIO);
+		device_printf(self,
+		    "Failed to start XHCI controller, with error %d\n", err);
+		xgene_xhci_detach(self);
+		return (err);
 	}
 
 	err = device_probe_and_attach(sc->sc_bus.bdev);
 	if (err != 0) {
-		device_printf(self, "Failed to initialize USB, with error %d\n", err);
-		apm_xhci_detach(self);
-		return (ENXIO);
+		device_printf(self, "Failed to initialize USB, with error %d\n",
+		    err);
+		xgene_xhci_detach(self);
+		return (err);
 	}
 
 	return (0);
 }
 
 static int
-apm_xhci_detach(device_t self)
+xgene_xhci_detach(device_t self)
 {
 	xhci_softc_t *sc = device_get_softc(self);
 	device_t bdev;
@@ -211,18 +215,10 @@ apm_xhci_detach(device_t self)
 	device_delete_children(self);
 
 	if (sc->sc_irq_res != NULL && sc->sc_intr_hdl != NULL) {
-		/*
-		 * only call xhci_detach() after xhci_init()
-		 */
-		/* TODO: there is no substitution for this */
-		//xhci_detach(sc);
-
 		err = bus_teardown_intr(self, sc->sc_irq_res, sc->sc_intr_hdl);
 
 		if (err != 0)
-			/* XXX or should we panic? */
-			device_printf(self, "Failed to tear down IRQ, with error %d\n",
-			    err);
+			panic("Failed to tear down IRQ, with error %d\n", err);
 		sc->sc_intr_hdl = NULL;
 	}
 
@@ -244,12 +240,12 @@ apm_xhci_detach(device_t self)
 
 static device_method_t xhci_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_probe, apm_xhci_probe),
-	DEVMETHOD(device_attach, apm_xhci_attach),
-	DEVMETHOD(device_detach, apm_xhci_detach),
-	DEVMETHOD(device_suspend, apm_xhci_suspend),
-	DEVMETHOD(device_resume, apm_xhci_resume),
-	DEVMETHOD(device_shutdown, apm_xhci_shutdown),
+	DEVMETHOD(device_probe, xgene_xhci_probe),
+	DEVMETHOD(device_attach, xgene_xhci_attach),
+	DEVMETHOD(device_detach, xgene_xhci_detach),
+	DEVMETHOD(device_suspend, xgene_xhci_suspend),
+	DEVMETHOD(device_resume, xgene_xhci_resume),
+	DEVMETHOD(device_shutdown, xgene_xhci_shutdown),
 
 	/* Bus interface */
 	DEVMETHOD(bus_print_child, bus_generic_print_child),
@@ -265,5 +261,5 @@ static driver_t xhci_driver = {
 
 static devclass_t xhci_devclass;
 
-DRIVER_MODULE(xhci, simplebus, xhci_driver, xhci_devclass, 0, 0);
+DRIVER_MODULE(xhci, simplebus, xhci_driver, xhci_devclass, NULL, NULL);
 MODULE_DEPEND(xhci, usb, 1, 1, 1);

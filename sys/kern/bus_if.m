@@ -390,6 +390,21 @@ METHOD int setup_intr {
 };
 
 /**
+ * @brief Unmask an interrupt handler
+ *
+ * This method is used to mask the previously set up interrupt.
+ * 
+ * @param _dev		the parent device of @p _child
+ * @param _child	the device which allocated the resource
+ * @param _irq		the resource representing the interrupt
+ */
+METHOD int unmask_intr {
+	device_t	_dev;
+	device_t	_child;
+	struct resource *_irq;
+};
+
+/**
  * @brief Uninstall an interrupt handler
  *
  * This method is used to disassociate an interrupt handler function

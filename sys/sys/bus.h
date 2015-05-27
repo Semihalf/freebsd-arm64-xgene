@@ -402,6 +402,8 @@ int	bus_generic_setup_intr(device_t dev, device_t child,
 			       struct resource *irq, int flags,
 			       driver_filter_t *filter, driver_intr_t *intr, 
 			       void *arg, void **cookiep);
+int	bus_generic_unmask_intr(device_t dev, device_t child,
+			       struct resource *irq);
 
 struct resource *
 	bus_generic_rl_alloc_resource (device_t, device_t, int, int *,
@@ -456,6 +458,7 @@ int	bus_setup_intr(device_t dev, struct resource *r, int flags,
 		       driver_filter_t filter, driver_intr_t handler, 
 		       void *arg, void **cookiep);
 int	bus_teardown_intr(device_t dev, struct resource *r, void *cookie);
+int	bus_unmask_intr(device_t dev, struct resource *r);
 int	bus_bind_intr(device_t dev, struct resource *r, int cpu);
 int	bus_describe_intr(device_t dev, struct resource *irq, void *cookie,
 			  const char *fmt, ...);

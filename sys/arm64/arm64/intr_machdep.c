@@ -548,6 +548,13 @@ arm_cpu_intr(struct trapframe *tf)
 	critical_exit();
 }
 
+void
+arm_unmask_irq(u_int irq)
+{
+
+	PIC_UNMASK(root_pic, irq);
+}
+
 #ifdef SMP
 void
 arm_setup_ipihandler(driver_filter_t *filt, u_int ipi)
@@ -561,7 +568,8 @@ arm_setup_ipihandler(driver_filter_t *filt, u_int ipi)
 void
 arm_unmask_ipi(u_int ipi)
 {
-	PIC_UNMASK(root_pic, ipi + 16);
+
+	arm_unmask_irq(ipi + 16);
 }
 
 void

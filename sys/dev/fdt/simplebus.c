@@ -78,6 +78,7 @@ static device_method_t	simplebus_methods[] = {
 	DEVMETHOD(bus_print_child,	simplebus_print_child),
 	DEVMETHOD(bus_probe_nomatch,	simplebus_probe_nomatch),
 	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
+	DEVMETHOD(bus_unmask_intr,	bus_generic_unmask_intr),
 	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
 	DEVMETHOD(bus_alloc_resource,	simplebus_alloc_resource),
 	DEVMETHOD(bus_release_resource,	bus_generic_release_resource),

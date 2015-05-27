@@ -149,7 +149,9 @@ handle_el0_sync:
 	/* END OF WORKAROUND */
 	save_registers 0
 	mov	x0, sp
+	msr	daifclr, #2
 	bl	do_el0_sync
+	msr	daifset, #2
 	do_ast
 	restore_registers 0
 	eret

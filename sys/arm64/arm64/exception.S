@@ -136,6 +136,12 @@ handle_el1h_error:
 	brk	0xf13
 
 handle_el0_sync:
+	/* XXX ARM64TODO: WORKAROUND, invalidate ALL tlbs. To be fixed. */
+	dsb	sy
+	tlbi	vmalle1is
+	dsb	sy
+	isb
+	/* END OF WORKAROUND */
 	save_registers 0
 	mov	x0, sp
 	bl	do_el0_sync
@@ -144,6 +150,12 @@ handle_el0_sync:
 	eret
 
 handle_el0_irq:
+	/* XXX ARM64TODO: WORKAROUND, invalidate ALL tlbs. To be fixed. */
+	dsb	sy
+	tlbi	vmalle1is
+	dsb	sy
+	isb
+	/* END OF WORKAROUND */
 	save_registers 0
 	mov	x0, sp
 	bl	arm_cpu_intr

@@ -637,7 +637,21 @@ pmap_l3_valid_cacheable(pt_entry_t l3)
 	    ((l3 & ATTR_IDX_MASK) == ATTR_IDX(CACHED_MEMORY)));
 }
 
-#define	PTE_SYNC(pte)	cpu_dcache_wb_range((vm_offset_t)pte, sizeof(*pte))
+#define	PTE_SYNC(pte)							\
+do {									\
+	cpu_dcache_wb_range((vm_offset_t)(pte), sizeof(*(pte)));	\
+	/*								\
+	 * XXX ARM64TODO:						\
+	 *     WORKAROUND, invalidate ALL tlbs. To be fixed.		\
+	 */								\
+	__asm __volatile (						\
+	    "dsb	sy		\n"				\
+	    "tlbi	vmalle1is	\n"				\
+	    "dsb	sy		\n"				\
+	    "isb			\n"				\
+	    : : : "memory");						\
+	/* END OF WORKAROUND */						\
+} while (0)
 
 /*
  * Checks if the page is dirty. We currently lack proper tracking of this on

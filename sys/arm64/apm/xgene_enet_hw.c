@@ -432,6 +432,21 @@ static void xgene_gmac_set_mac_addr(struct xgene_enet_pdata *pdata)
 	xgene_enet_wr_mcx_mac(pdata, STATION_ADDR1_ADDR, addr1);
 }
 
+static void xgene_gmac_get_mac_addr(struct xgene_enet_pdata *pdata, u8 *dev_addr)
+{
+	u32 addr0, addr1;
+
+	xgene_enet_rd_mcx_mac(pdata, STATION_ADDR0_ADDR, &addr0);
+	xgene_enet_rd_mcx_mac(pdata, STATION_ADDR1_ADDR, &addr1);
+
+	dev_addr[0] = (addr0 >> 0);
+	dev_addr[1] = (addr0 >> 8);
+	dev_addr[2] = (addr0 >> 16);
+	dev_addr[3] = (addr0 >> 24);
+	dev_addr[4] = (addr1 >> 16);
+	dev_addr[5] = (addr1 >> 24);
+}
+
 static int xgene_enet_ecc_init(struct xgene_enet_pdata *pdata)
 {
 	device_t ndev = pdata->ndev;
@@ -622,6 +637,11 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 		xgene_enet_ecc_init(pdata);
 	}
 #else
+	/*
+	 * XXX: For some reason this sequence breaks MENET operations.
+	 *      Disable it for now.
+	 */
+#if 0
 	/* XXX: Move it when the FreeBSD's clocks framework is ready */
 #define	XGENE_ENET_SRST		0xc000UL
 #define	 XGENE_ENET_SRST_MASK	0xf
@@ -659,6 +679,7 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 	val &= ~XGENE_ENET_SRST_MASK;
 	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
 
+#endif
 	xgene_enet_ecc_init(pdata);
 #endif
 	xgene_enet_config_ring_if_assoc(pdata);
@@ -860,6 +881,7 @@ struct xgene_mac_ops xgene_gmac_ops = {
 	.rx_disable = xgene_gmac_rx_disable,
 	.tx_disable = xgene_gmac_tx_disable,
 	.set_mac_addr = xgene_gmac_set_mac_addr,
+	.get_mac_addr = xgene_gmac_get_mac_addr,
 };
 
 struct xgene_port_ops xgene_gport_ops = {

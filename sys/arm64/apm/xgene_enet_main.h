@@ -69,11 +69,15 @@ struct xgene_enet_desc_ring {
 	u16 dst_ring_num;
 	u8 nbufpool;
 
-	bus_dma_tag_t rx_buf_dmat;
-	bus_dma_tag_t tx_buf_dmat;
-	struct xge_buff *tx_buf; /* Used for Tx dmap */
-	struct xge_buff *rx_buf;
-	struct xge_buff *cp_buf;
+	bus_dma_tag_t buf_dmat;
+	union {
+		struct xge_buff *buff;
+		struct xge_buff *tx_buff; /* Used for Tx dmap */
+		struct {
+			struct xge_buff *rx_buff;
+			struct xge_buff *cp_buff;
+		};
+	};
 
 //	struct sk_buff *(*rx_skb);
 //	struct sk_buff *(*cp_skb);
@@ -100,6 +104,7 @@ struct xgene_mac_ops {
 	void (*tx_disable)(struct xgene_enet_pdata *pdata);
 	void (*rx_disable)(struct xgene_enet_pdata *pdata);
 	void (*set_mac_addr)(struct xgene_enet_pdata *pdata);
+	void (*get_mac_addr)(struct xgene_enet_pdata *pdata, u8 *dev_addr);
 //	void (*link_state)(struct work_struct *work);
 };
 

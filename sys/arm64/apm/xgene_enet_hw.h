@@ -22,10 +22,14 @@
 #ifndef __XGENE_ENET_HW_H__
 #define __XGENE_ENET_HW_H__
 
+#include "if_xge_bsd_compat.h"
+
 #include "xgene_enet_main.h"
 
 struct xgene_enet_pdata;
+#if 0
 struct xgene_enet_stats;
+#endif
 
 /* clears and then set bits */
 static inline void xgene_set_bits(u32 *dst, u32 val, u32 start, u32 len)
@@ -171,6 +175,7 @@ enum xgene_enet_rm {
 #define REG_ADDR_SET(dst, val)			xgene_set_bits(dst, val, 0, 5)
 #define ENET_INTERFACE_MODE2_SET(dst, val)	xgene_set_bits(dst, val, 8, 2)
 #define MGMT_CLOCK_SEL_SET(dst, val)		xgene_set_bits(dst, val, 0, 3)
+
 #define SOFT_RESET1			BIT(31)
 #define TX_EN				BIT(0)
 #define RX_EN				BIT(2)
@@ -232,14 +237,14 @@ static inline void xgene_enet_mark_desc_slot_empty(void *desc_slot_ptr)
 {
 	__le64 *desc_slot = desc_slot_ptr;
 
-	desc_slot[EMPTY_SLOT_INDEX] = cpu_to_le64(EMPTY_SLOT);
+	desc_slot[EMPTY_SLOT_INDEX] = htole64(EMPTY_SLOT);
 }
 
 static inline bool xgene_enet_is_desc_slot_empty(void *desc_slot_ptr)
 {
 	__le64 *desc_slot = desc_slot_ptr;
 
-	return (desc_slot[EMPTY_SLOT_INDEX] == cpu_to_le64(EMPTY_SLOT));
+	return (desc_slot[EMPTY_SLOT_INDEX] == htole64(EMPTY_SLOT));
 }
 
 enum xgene_enet_ring_cfgsize {
@@ -270,8 +275,8 @@ enum xgene_enet_ring_bufnum {
 };
 
 enum xgene_enet_cmd {
-	XGENE_ENET_WR_CMD = BIT(31),
-	XGENE_ENET_RD_CMD = BIT(30)
+	XGENE_ENET_WR_CMD = (1 << 31),
+	XGENE_ENET_RD_CMD = (1 << 30)
 };
 
 enum xgene_enet_err_code {
@@ -315,12 +320,14 @@ static inline u16 xgene_enet_get_numslots(u16 id, u32 size)
 struct xgene_enet_desc_ring *xgene_enet_setup_ring(
 		struct xgene_enet_desc_ring *ring);
 void xgene_enet_clear_ring(struct xgene_enet_desc_ring *ring);
+#if 0
 void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 			    struct xgene_enet_pdata *pdata,
 			    enum xgene_enet_err_code status);
 
 int xgene_enet_mdio_config(struct xgene_enet_pdata *pdata);
 void xgene_enet_mdio_remove(struct xgene_enet_pdata *pdata);
+#endif
 bool xgene_ring_mgr_init(struct xgene_enet_pdata *p);
 
 extern struct xgene_mac_ops xgene_gmac_ops;

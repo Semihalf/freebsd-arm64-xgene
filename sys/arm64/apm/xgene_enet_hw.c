@@ -19,6 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "if_xge_bsd_compat.h"
+#include "if_xge_var.h"
+
 #include "xgene_enet_main.h"
 #include "xgene_enet_hw.h"
 
@@ -74,7 +77,7 @@ static void xgene_enet_ring_wr32(struct xgene_enet_desc_ring *ring,
 {
 	struct xgene_enet_pdata *pdata = netdev_priv(ring->ndev);
 
-	iowrite32(data, pdata->ring_csr_addr + offset);
+	RING_CSR_WRITE32(pdata, offset, data);
 }
 
 static void xgene_enet_ring_rd32(struct xgene_enet_desc_ring *ring,
@@ -82,7 +85,7 @@ static void xgene_enet_ring_rd32(struct xgene_enet_desc_ring *ring,
 {
 	struct xgene_enet_pdata *pdata = netdev_priv(ring->ndev);
 
-	*data = ioread32(pdata->ring_csr_addr + offset);
+	*data = RING_CSR_READ32(pdata, offset);
 }
 
 static void xgene_enet_write_ring_state(struct xgene_enet_desc_ring *ring)
@@ -186,6 +189,7 @@ out:
 	xgene_enet_clr_ring_state(ring);
 }
 
+#if 0
 void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 			    struct xgene_enet_pdata *pdata,
 			    enum xgene_enet_err_code status)
@@ -216,58 +220,60 @@ void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 		break;
 	}
 }
+#endif
 
 static void xgene_enet_wr_csr(struct xgene_enet_pdata *pdata,
 			      u32 offset, u32 val)
 {
-	void __iomem *addr = pdata->eth_csr_addr + offset;
+	bus_space_handle_t addr = pdata->eth_csr_addr + offset;
 
-	iowrite32(val, addr);
+	ENET_CSR_WRITE32(pdata, addr, val);
 }
 
 static void xgene_enet_wr_ring_if(struct xgene_enet_pdata *pdata,
 				  u32 offset, u32 val)
 {
-	void __iomem *addr = pdata->eth_ring_if_addr + offset;
+	bus_space_handle_t addr = pdata->eth_ring_if_addr + offset;
 
-	iowrite32(val, addr);
+	ENET_CSR_WRITE32(pdata, addr, val);
 }
 
 static void xgene_enet_wr_diag_csr(struct xgene_enet_pdata *pdata,
 				   u32 offset, u32 val)
 {
-	void __iomem *addr = pdata->eth_diag_csr_addr + offset;
+	bus_space_handle_t addr = pdata->eth_diag_csr_addr + offset;
 
-	iowrite32(val, addr);
+	ENET_CSR_WRITE32(pdata, addr, val);
 }
 
 static void xgene_enet_wr_mcx_csr(struct xgene_enet_pdata *pdata,
 				  u32 offset, u32 val)
 {
-	void __iomem *addr = pdata->mcx_mac_csr_addr + offset;
+	bus_space_handle_t addr = pdata->mcx_mac_csr_addr + offset;
 
-	iowrite32(val, addr);
+	ENET_CSR_WRITE32(pdata, addr, val);
 }
 
-static bool xgene_enet_wr_indirect(void __iomem *addr, void __iomem *wr,
-				   void __iomem *cmd, void __iomem *cmd_done,
+static bool xgene_enet_wr_indirect(struct xgene_enet_pdata *pdata, bus_space_handle_t addr,
+				   bus_space_handle_t wr, bus_space_handle_t cmd,
+				   bus_space_handle_t cmd_done,
 				   u32 wr_addr, u32 wr_data)
 {
 	u32 done;
 	u8 wait = 10;
 
-	iowrite32(wr_addr, addr);
-	iowrite32(wr_data, wr);
-	iowrite32(XGENE_ENET_WR_CMD, cmd);
+	ENET_CSR_WRITE32(pdata, addr, wr_addr);
+	ENET_CSR_WRITE32(pdata, wr, wr_data);
+	ENET_CSR_WRITE32(pdata, cmd, XGENE_ENET_WR_CMD);
 
 	/* wait for write command to complete */
-	while (!(done = ioread32(cmd_done)) && wait--)
+	while (!(done = ENET_CSR_READ32(pdata, cmd_done)) && wait--)
 		udelay(1);
 
 	if (!done)
 		return false;
 
-	iowrite32(0, cmd);
+	ENET_CSR_WRITE32(pdata, cmd, 0);
 
 	return true;
 }
@@ -275,14 +281,14 @@ static bool xgene_enet_wr_indirect(void __iomem *addr, void __iomem *wr,
 static void xgene_enet_wr_mcx_mac(struct xgene_enet_pdata *pdata,
 				  u32 wr_addr, u32 wr_data)
 {
-	void __iomem *addr, *wr, *cmd, *cmd_done;
+	bus_space_handle_t addr, wr, cmd, cmd_done;
 
 	addr = pdata->mcx_mac_addr + MAC_ADDR_REG_OFFSET;
 	wr = pdata->mcx_mac_addr + MAC_WRITE_REG_OFFSET;
 	cmd = pdata->mcx_mac_addr + MAC_COMMAND_REG_OFFSET;
 	cmd_done = pdata->mcx_mac_addr + MAC_COMMAND_DONE_REG_OFFSET;
 
-	if (!xgene_enet_wr_indirect(addr, wr, cmd, cmd_done, wr_addr, wr_data))
+	if (!xgene_enet_wr_indirect(pdata, addr, wr, cmd, cmd_done, wr_addr, wr_data))
 		netdev_err(pdata->ndev, "MCX mac write failed, addr: %04x\n",
 			   wr_addr);
 }
@@ -290,46 +296,47 @@ static void xgene_enet_wr_mcx_mac(struct xgene_enet_pdata *pdata,
 static void xgene_enet_rd_csr(struct xgene_enet_pdata *pdata,
 			      u32 offset, u32 *val)
 {
-	void __iomem *addr = pdata->eth_csr_addr + offset;
+	bus_space_handle_t addr = pdata->eth_csr_addr + offset;
 
-	*val = ioread32(addr);
+	*val = ENET_CSR_READ32(pdata, addr);
 }
 
 static void xgene_enet_rd_diag_csr(struct xgene_enet_pdata *pdata,
 				   u32 offset, u32 *val)
 {
-	void __iomem *addr = pdata->eth_diag_csr_addr + offset;
+	bus_space_handle_t addr = pdata->eth_diag_csr_addr + offset;
 
-	*val = ioread32(addr);
+	*val = ENET_CSR_READ32(pdata, addr);
 }
 
 static void xgene_enet_rd_mcx_csr(struct xgene_enet_pdata *pdata,
 				  u32 offset, u32 *val)
 {
-	void __iomem *addr = pdata->mcx_mac_csr_addr + offset;
+	bus_space_handle_t addr = pdata->mcx_mac_csr_addr + offset;
 
-	*val = ioread32(addr);
+	*val = ENET_CSR_READ32(pdata, addr);
 }
 
-static bool xgene_enet_rd_indirect(void __iomem *addr, void __iomem *rd,
-				   void __iomem *cmd, void __iomem *cmd_done,
-				   u32 rd_addr, u32 *rd_data)
+static bool xgene_enet_rd_indirect(struct xgene_enet_pdata *pdata,
+    bus_space_handle_t addr, bus_space_handle_t rd,
+    bus_space_handle_t cmd, bus_space_handle_t cmd_done,
+    u32 rd_addr, u32 *rd_data)
 {
 	u32 done;
 	u8 wait = 10;
 
-	iowrite32(rd_addr, addr);
-	iowrite32(XGENE_ENET_RD_CMD, cmd);
+	ENET_CSR_WRITE32(pdata, addr, rd_addr);
+	ENET_CSR_WRITE32(pdata, cmd, XGENE_ENET_RD_CMD);
 
 	/* wait for read command to complete */
-	while (!(done = ioread32(cmd_done)) && wait--)
+	while (!(done = ENET_CSR_READ32(pdata, cmd_done)) && wait--)
 		udelay(1);
 
 	if (!done)
 		return false;
 
-	*rd_data = ioread32(rd);
-	iowrite32(0, cmd);
+	*rd_data = ENET_CSR_READ32(pdata, rd);
+	ENET_CSR_WRITE32(pdata, cmd, 0);
 
 	return true;
 }
@@ -337,19 +344,20 @@ static bool xgene_enet_rd_indirect(void __iomem *addr, void __iomem *rd,
 static void xgene_enet_rd_mcx_mac(struct xgene_enet_pdata *pdata,
 				  u32 rd_addr, u32 *rd_data)
 {
-	void __iomem *addr, *rd, *cmd, *cmd_done;
+	bus_space_handle_t addr, rd, cmd, cmd_done;
 
 	addr = pdata->mcx_mac_addr + MAC_ADDR_REG_OFFSET;
 	rd = pdata->mcx_mac_addr + MAC_READ_REG_OFFSET;
 	cmd = pdata->mcx_mac_addr + MAC_COMMAND_REG_OFFSET;
 	cmd_done = pdata->mcx_mac_addr + MAC_COMMAND_DONE_REG_OFFSET;
 
-	if (!xgene_enet_rd_indirect(addr, rd, cmd, cmd_done, rd_addr, rd_data))
+	if (!xgene_enet_rd_indirect(pdata, addr, rd, cmd, cmd_done, rd_addr, rd_data))
 		netdev_err(pdata->ndev, "MCX mac read failed, addr: %04x\n",
 			   rd_addr);
 }
 
-static int xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
+int
+xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
 			       u32 reg, u16 data)
 {
 	u32 addr = 0, wr_data = 0;
@@ -363,7 +371,11 @@ static int xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
 	PHY_CONTROL_SET(&wr_data, data);
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_CONTROL_ADDR, wr_data);
 	do {
+#if 0
 		usleep_range(5, 10);
+#else
+		udelay(10);
+#endif
 		xgene_enet_rd_mcx_mac(pdata, MII_MGMT_INDICATORS_ADDR, &done);
 	} while ((done & BUSY_MASK) && wait--);
 
@@ -375,7 +387,8 @@ static int xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
 	return 0;
 }
 
-static int xgene_mii_phy_read(struct xgene_enet_pdata *pdata,
+int
+xgene_mii_phy_read(struct xgene_enet_pdata *pdata,
 			      u8 phy_id, u32 reg)
 {
 	u32 addr = 0;
@@ -387,7 +400,11 @@ static int xgene_mii_phy_read(struct xgene_enet_pdata *pdata,
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_ADDRESS_ADDR, addr);
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_COMMAND_ADDR, READ_CYCLE_MASK);
 	do {
+#if 0
 		usleep_range(5, 10);
+#else
+		udelay(10);
+#endif
 		xgene_enet_rd_mcx_mac(pdata, MII_MGMT_INDICATORS_ADDR, &done);
 	} while ((done & BUSY_MASK) && wait--);
 
@@ -405,7 +422,7 @@ static int xgene_mii_phy_read(struct xgene_enet_pdata *pdata,
 static void xgene_gmac_set_mac_addr(struct xgene_enet_pdata *pdata)
 {
 	u32 addr0, addr1;
-	u8 *dev_addr = pdata->ndev->dev_addr;
+	u8 *dev_addr = (uint8_t *)pdata->hwaddr;
 
 	addr0 = (dev_addr[3] << 24) | (dev_addr[2] << 16) |
 		(dev_addr[1] << 8) | dev_addr[0];
@@ -417,13 +434,17 @@ static void xgene_gmac_set_mac_addr(struct xgene_enet_pdata *pdata)
 
 static int xgene_enet_ecc_init(struct xgene_enet_pdata *pdata)
 {
-	struct net_device *ndev = pdata->ndev;
+	device_t ndev = pdata->ndev;
 	u32 data;
 	u8 wait = 10;
 
 	xgene_enet_wr_diag_csr(pdata, ENET_CFG_MEM_RAM_SHUTDOWN_ADDR, 0x0);
 	do {
+#if 0
 		usleep_range(100, 110);
+#else
+		DELAY(110);
+#endif
 		xgene_enet_rd_diag_csr(pdata, ENET_BLOCK_MEM_RDY_ADDR, &data);
 	} while ((data != 0xffffffff) && wait--);
 
@@ -577,10 +598,10 @@ static void xgene_gmac_tx_disable(struct xgene_enet_pdata *pdata)
 
 bool xgene_ring_mgr_init(struct xgene_enet_pdata *p)
 {
-	if (!ioread32(p->ring_csr_addr + CLKEN_ADDR))
+	if (!RING_CSR_READ32(p, CLKEN_ADDR))
 		return false;
 
-	if (ioread32(p->ring_csr_addr + SRST_ADDR))
+	if (RING_CSR_READ32(p, SRST_ADDR))
 		return false;
 
 	return true;
@@ -593,12 +614,53 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 	if (!xgene_ring_mgr_init(pdata))
 		return -ENODEV;
 
+#if 0
 	if (pdata->clk) {
 		clk_prepare_enable(pdata->clk);
 		clk_disable_unprepare(pdata->clk);
 		clk_prepare_enable(pdata->clk);
 		xgene_enet_ecc_init(pdata);
 	}
+#else
+	/* XXX: Move it when the FreeBSD's clocks framework is ready */
+#define	XGENE_ENET_SRST		0xc000UL
+#define	 XGENE_ENET_SRST_MASK	0xf
+
+#define	XGENE_ENET_CLKEN	0xc008UL
+#define	 XGENE_ENET_CLKEN_MASK	0xf
+
+	/*
+	 * The sequence is as follows:
+	 */
+	/* 1. Enable clock, enable CSR */
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
+	val |= XGENE_ENET_CLKEN_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
+
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
+	val &= ~XGENE_ENET_SRST_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
+
+	/* 2. Put CSR in reset, disable clock */
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
+	val |= XGENE_ENET_SRST_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
+
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
+	val &= ~XGENE_ENET_CLKEN_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
+
+	/* 3. Enable clock and enable CSR again */
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
+	val |= XGENE_ENET_CLKEN_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
+
+	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
+	val &= ~XGENE_ENET_SRST_MASK;
+	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
+
+	xgene_enet_ecc_init(pdata);
+#endif
 	xgene_enet_config_ring_if_assoc(pdata);
 
 	/* Enable auto-incr for scanning */
@@ -610,6 +672,7 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 	return 0;
 }
 
+#if 0
 static void xgene_gport_shutdown(struct xgene_enet_pdata *pdata)
 {
 	clk_disable_unprepare(pdata->clk);
@@ -787,6 +850,7 @@ void xgene_enet_mdio_remove(struct xgene_enet_pdata *pdata)
 	mdiobus_free(pdata->mdio_bus);
 	pdata->mdio_bus = NULL;
 }
+#endif
 
 struct xgene_mac_ops xgene_gmac_ops = {
 	.init = xgene_gmac_init,
@@ -801,5 +865,9 @@ struct xgene_mac_ops xgene_gmac_ops = {
 struct xgene_port_ops xgene_gport_ops = {
 	.reset = xgene_enet_reset,
 	.cle_bypass = xgene_enet_cle_bypass,
+#if 0
 	.shutdown = xgene_gport_shutdown,
+#else
+	.shutdown = NULL,
+#endif
 };

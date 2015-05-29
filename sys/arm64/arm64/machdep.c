@@ -750,14 +750,25 @@ try_load_dtb(caddr_t kmdp)
 	dtbp = MD_FETCH(kmdp, MODINFOMD_DTBP, vm_offset_t);
 
 #if defined(FDT_DTB_STATIC)
+#if 0
 	/*
 	 * In case the device tree blob was not retrieved (from metadata) try
 	 * to use the statically embedded one.
 	 */
-//	if (dtbp == (vm_offset_t)NULL) {
+	if (dtbp == (vm_offset_t)NULL) {
 		printf("Using compiled-in default DTB\n");
 		dtbp = (vm_offset_t)&fdt_static_dtb;
-//	}
+	}
+#else
+	/*
+	 * XXX ARM64TODO: Use statically embedded DTB unconditionally if
+	 *                FDT_DTB_STATIC is enabled. This will prevent
+	 *                from using DTBs that are not compatible with ePAPR
+	 *                yet are passed to kernel by bootloader.
+	 */
+	printf("Using compiled-in default DTB\n");
+	dtbp = (vm_offset_t)&fdt_static_dtb;
+#endif
 #endif
 
 	if (dtbp == (vm_offset_t)NULL) {

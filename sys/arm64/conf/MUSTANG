@@ -38,7 +38,7 @@ options 	UFS_GJOURNAL		# Enable gjournal-based UFS journaling
 options 	QUOTA			# Enable disk quotas for UFS
 options 	MD_ROOT			# MD is a potential root device
 # XXX: This is for test purposes
-options		ROOTDEVNAME=\"ufs:da0\"
+options		ROOTDEVNAME=\"ufs:da0s2a\"
 
 #options 	NFSCL			# New Network Filesystem Client
 #options 	NFSD			# New Network Filesystem Server
@@ -121,6 +121,13 @@ device		ether		# Ethernet support
 device		md		# Memory "disks"
 #device		gif		# IPv6 and IPv4 tunneling
 device		firmware	# firmware assist module
+
+# PCIe support
+options		NEW_PCIB
+options 	XGENE_PCI_MSIX
+device		pci             # SoC PCIe support(NEW_PCIB option is required)
+device		ixgbe
+device		inet
 
 # The `bpf' device enables the Berkeley Packet Filter.
 # Be aware of the administrative consequences of enabling this!

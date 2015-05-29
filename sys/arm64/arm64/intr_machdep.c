@@ -61,7 +61,11 @@ __FBSDID("$FreeBSD");
 #define	MAX_STRAY_LOG	5
 #define	INTRNAME_LEN	(MAXCOMLEN + 1)
 
+#ifdef XGENE_PCI_MSIX
+#define NIRQS   (1024+4096)  /* In APM we will have additional 4096 'virtual' interrupts for MSI-X */
+#else
 #define	NIRQS	1024	/* Maximum number of interrupts in the system */
+#endif
 
 static MALLOC_DEFINE(M_INTR, "intr", "Interrupt Services");
 

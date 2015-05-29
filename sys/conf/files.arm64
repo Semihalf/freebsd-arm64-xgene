@@ -42,11 +42,13 @@ arm64/arm64/trap.c		standard
 arm64/arm64/uio_machdep.c	standard
 arm64/arm64/vfp.c		standard
 arm64/arm64/vm_machdep.c	standard
-arm64/cavium/thunder_pcie.c	optional	pci fdt
+#arm64/cavium/thunder_pcie.c	optional	pci fdt
 arm64/apm/xgene_clk_fdt.c	optional	fdt fdt_clock
 arm64/apm/xgene_clk.c		standard
 arm64/apm/xgene_ahci.c		optional	ahci fdt
 arm64/apm/xgene_xhci.c		optional	xhci fdt
+arm64/apm/xgene_pcie.c		optional	pci fdt
+arm64/apm/xgene_msi.c		optional	pci
 dev/fdt/fdt_arm64.c		optional	fdt
 dev/ofw/ofw_cpu.c		optional	fdt
 dev/uart/uart_bus_fdt.c		optional	uart fdt

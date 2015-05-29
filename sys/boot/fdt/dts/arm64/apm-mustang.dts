@@ -104,3 +104,7 @@
 &usb1 {
 	status = "okay";
 };
+
+&msi {
+	status = "okay";
+};

@@ -53,6 +53,9 @@
 #define	CTR_DLINE_SHIFT		16
 #define	CTR_DLINE_MASK		(0xf << CTR_DLINE_SHIFT)
 #define	CTR_DLINE_SIZE(reg)	(((reg) & CTR_DLINE_MASK) >> CTR_DLINE_SHIFT)
+#define	CTR_ILINE_SHIFT		0
+#define	CTR_ILINE_MASK		(0xf << CTR_ILINE_SHIFT)
+#define	CTR_ILINE_SIZE(reg)	(((reg) & CTR_ILINE_MASK) >> CTR_ILINE_SHIFT)
 
 /* ESR_ELx */
 #define	ESR_ELx_ISS_MASK	0x00ffffff
@@ -105,7 +108,7 @@
 #define	ID_AA64PFR0_GIC_MASK	(0xf << 24)
 
 /* MAIR_EL1 - Memory Attribute Indirection Register */
-#define	MAIR_ATTR_MASK(idx)	(0xff << ((n)* 8))
+#define	MAIR_ATTR_MASK(idx)	(0xffUL << ((idx)* 8))
 #define	MAIR_ATTR(attr, idx) ((attr) << ((idx) * 8))
 
 /* SCTLR_EL1 - System Control Register */
@@ -174,6 +177,28 @@
 #define	TCR_TG1_16K	(1 << TCR_TG1_SHIFT)
 #define	TCR_TG1_4K	(2 << TCR_TG1_SHIFT)
 #define	TCR_TG1_64K	(3 << TCR_TG1_SHIFT)
+
+#define	TCR_SH1_SHIFT	28
+#define	TCR_SH1_IS	(0x3UL << TCR_SH1_SHIFT)
+#define	TCR_ORGN1_SHIFT	26
+#define	TCR_ORGN1_WBWA	(0x1UL << TCR_ORGN1_SHIFT)
+#define	TCR_IRGN1_SHIFT	24
+#define	TCR_IRGN1_WBWA	(0x1UL << TCR_IRGN1_SHIFT)
+#define	TCR_SH0_SHIFT	12
+#define	TCR_SH0_IS	(0x3UL << TCR_SH0_SHIFT)
+#define	TCR_ORGN0_SHIFT	10
+#define	TCR_ORGN0_WBWA	(0x1UL << TCR_ORGN0_SHIFT)
+#define	TCR_IRGN0_SHIFT	8
+#define	TCR_IRGN0_WBWA	(0x1UL << TCR_IRGN0_SHIFT)
+
+#define	TCR_CACHE_ATTRS	((TCR_ORGN0_WBWA | TCR_ORGN1_WBWA) |\
+				(TCR_ORGN0_WBWA | TCR_ORGN1_WBWA))
+
+#ifdef SMP
+#define	TCR_SMP_ATTRS	(TCR_SH0_IS | TCR_SH1_IS)
+#else
+#define	TCR_SMP_ATTRS	0
+#endif
 
 #define	TCR_T1SZ_SHIFT	16
 #define	TCR_T0SZ_SHIFT	0

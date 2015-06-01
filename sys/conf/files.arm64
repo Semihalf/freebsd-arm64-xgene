@@ -11,6 +11,7 @@ arm64/arm64/busdma_machdep.c	standard
 arm64/arm64/clock.c		standard
 arm64/arm64/copyinout.S		standard
 arm64/arm64/copystr.c		standard
+arm64/arm64/cpufunc_asm.S	standard
 arm64/arm64/db_disasm.c		optional	ddb
 arm64/arm64/db_interface.c	optional	ddb
 arm64/arm64/db_trace.c		optional	ddb
@@ -42,9 +43,12 @@ arm64/arm64/uio_machdep.c	standard
 arm64/arm64/vfp.c		standard
 arm64/arm64/vm_machdep.c	standard
 #arm64/cavium/thunder_pcie.c	optional	pci fdt
-arm64/apm/xhci_apm.c		optional	xhci
-arm64/apm/apm_pcie.c		optional	pci fdt
-arm64/apm/apm_msi.c		optional	pci 
+arm64/apm/xgene_clk_fdt.c	optional	fdt fdt_clock
+arm64/apm/xgene_clk.c		standard
+arm64/apm/xgene_ahci.c		optional	ahci fdt
+arm64/apm/xgene_xhci.c		optional	xhci fdt
+arm64/apm/xgene_pcie.c		optional	pci fdt
+arm64/apm/xgene_msi.c		optional	pci
 dev/fdt/fdt_arm64.c		optional	fdt
 dev/ofw/ofw_cpu.c		optional	fdt
 dev/uart/uart_bus_fdt.c		optional	uart fdt

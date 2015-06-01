@@ -106,5 +106,5 @@
 };
 
 &msi {
-	status = "ok";
+	status = "okay";
 };

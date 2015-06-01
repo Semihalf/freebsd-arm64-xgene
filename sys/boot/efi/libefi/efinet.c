@@ -101,8 +101,13 @@ efinet_match(struct netif *nif, void *machdep_hint)
 {
 	struct devdesc *dev = machdep_hint;
 
-	if (dev->d_unit - 1 == nif->nif_unit)
+#if MACHINE_CPUARCH == aarch64
+	if (dev->d_unit == nif->nif_unit)
 		return (1);
+#else
+	if (dev->d_unit - 1== nif->nif_unit)
+		return (1);
+#endif
 	return(0);
 }
 

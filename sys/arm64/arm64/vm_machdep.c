@@ -93,10 +93,35 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 void
 cpu_reset(void)
 {
-
+#if 0
 	printf("cpu_reset");
 	while(1)
 		__asm volatile("wfi" ::: "memory");
+#else
+	/*
+	 * XXX ARM64TODO: Apply cold reset method just for X-Gene SoC.
+	 *                This is not a generic approach and should be replaced
+	 *                by call to EFI or etc.
+	 */
+	uint32_t *scu_rstreq;
+	size_t timeout;
+
+#define	XGENE_SCU_RSTREQ_PA		0x17000014UL
+#define	XGENE_SCU_RSTREQ_COLD_RST	0x1
+
+	timeout = 1000;
+
+	scu_rstreq = pmap_mapdev(XGENE_SCU_RSTREQ_PA, sizeof(*scu_rstreq));
+	if (scu_rstreq != NULL) {
+		*scu_rstreq = XGENE_SCU_RSTREQ_COLD_RST;
+		dsb();
+		while (--timeout > 0)
+			DELAY(1000);
+	}
+	printf("Reboot failed - system halted\n");
+	while(1)
+		__asm volatile("wfi" ::: "memory");
+#endif
 }
 
 void

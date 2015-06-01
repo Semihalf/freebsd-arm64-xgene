@@ -1,3 +1,4 @@
 ARM64		opt_global.h
 VFP		opt_global.h
-APM_PCI_MSIX
+FDT_CLOCK	opt_global.h
+XGENE_PCI_MSIX

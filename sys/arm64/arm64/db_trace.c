@@ -110,9 +110,9 @@ db_stack_trace_cmd(struct unwind_state *frame)
 		db_printsym(frame->pc, DB_STGY_PROC);
 		db_printf("\n");
 
-		db_printf("\t pc = 0x%08lx  lr = 0x%08lx\n", pc,
+		db_printf("\t pc = 0x%016lx  lr = 0x%016lx\n", pc,
 		    frame->pc);
-		db_printf("\t sp = 0x%08lx  fp = 0x%08lx\n", frame->sp,
+		db_printf("\t sp = 0x%016lx  fp = 0x%016lx\n", frame->sp,
 		    frame->fp);
 		/* TODO: Show some more registers */
 		db_printf("\n");

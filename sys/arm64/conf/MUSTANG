@@ -38,7 +38,7 @@ options 	UFS_GJOURNAL		# Enable gjournal-based UFS journaling
 options 	QUOTA			# Enable disk quotas for UFS
 options 	MD_ROOT			# MD is a potential root device
 # XXX: This is for test purposes
-options		ROOTDEVNAME=\"ufs:da0\"
+options		ROOTDEVNAME=\"ufs:da0s2a\"
 
 #options 	NFSCL			# New Network Filesystem Client
 #options 	NFSD			# New Network Filesystem Server
@@ -53,6 +53,7 @@ options 	GEOM_PART_GPT		# GUID Partition Tables.
 options 	GEOM_LABEL		# Provides labelization
 options 	SCSI_DELAY=5000		# Delay (in ms) before probing SCSI
 options 	KTRACE			# ktrace(1) support
+options		KSTACK_PAGES=4
 options 	STACK			# stack(9) support
 options 	SYSVSHM			# SYSV-style shared memory
 options 	SYSVMSG			# SYSV-style message queues
@@ -105,6 +106,8 @@ device		cd
 device		ct
 device		ch
 
+device		ahci
+
 # Pseudo devices.
 device		loop		# Network loopback
 device		random		# Entropy device
@@ -116,13 +119,11 @@ device		md		# Memory "disks"
 device		firmware	# firmware assist module
 
 # PCIe support
-options         NEW_PCIB
+options		NEW_PCIB
+options 	XGENE_PCI_MSIX
 device		pci             # SoC PCIe support(NEW_PCIB option is required)
-#device          ixgbe   
-device		ix
-device		ixv
-device 		inet         
-options		APM_PCI_MSIX
+device		ixgbe
+device		inet
 
 # The `bpf' device enables the Berkeley Packet Filter.
 # Be aware of the administrative consequences of enabling this!
@@ -130,6 +131,7 @@ options		APM_PCI_MSIX
 #device		bpf		# Berkeley packet filter
 
 options 	FDT
+options 	FDT_CLOCK
 options 	FDT_DTB_STATIC
 makeoptions 	FDT_DTS_FILE=apm-mustang.dts
 

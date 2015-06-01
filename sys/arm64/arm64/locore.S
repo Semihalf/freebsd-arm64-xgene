@@ -41,6 +41,16 @@
 	.globl	kernbase
 	.set	kernbase, KERNBASE
 
+#define	DEVICE_MEM	0
+#define	NORMAL_UNCACHED	1
+#define	NORMAL_MEM	2
+
+#ifdef SMP
+#define	SHAREABILITY	ATTR_SH(ATTR_SH_IS)
+#else
+#define	SHAREABILITY	0
+#endif
+
 /*
  * We assume:
  *  MMU      off
@@ -258,18 +268,18 @@ virt_map:
  */
 create_pagetables:
 	/* Save the Link register */
-	mov	x5, x30
+	mov	x4, x30
 
 	/* Clean the page table */
-	adr	x6, pagetable
-	mov	x26, x6
+	adr	x5, pagetable
+	mov	x26, x5
 	adr	x27, pagetable_end
 1:
-	stp	xzr, xzr, [x6], #16
-	stp	xzr, xzr, [x6], #16
-	stp	xzr, xzr, [x6], #16
-	stp	xzr, xzr, [x6], #16
-	cmp	x6, x27
+	stp	xzr, xzr, [x5], #16
+	stp	xzr, xzr, [x5], #16
+	stp	xzr, xzr, [x5], #16
+	stp	xzr, xzr, [x5], #16
+	cmp	x5, x27
 	b.lo	1b
 
 	/*
@@ -277,18 +287,19 @@ create_pagetables:
 	 */
 
 	/* Find the size of the kernel */
-	mov	x6, #(KERNBASE)
-	ldr	x7, .Lend
+	mov	x5, #(KERNBASE)
+	ldr	x6, .Lend
 	/* Find the end - begin */
-	sub	x8, x7, x6
+	sub	x7, x6, x5
 	/* Get the number of l2 pages to allocate, rounded down */
-	lsr	x10, x8, #(L2_SHIFT)
+	lsr	x10, x7, #(L2_SHIFT)
 	/* Add 4 MiB for any rounding above and the module data */
 	add	x10, x10, #2
 
 	/* Create the kernel space L2 table */
-	mov	x6, x26
-	mov	x7, #1
+	mov	x5, x26
+	mov	x6, #SHAREABILITY
+	mov	x7, #NORMAL_MEM
 	mov	x8, #(KERNBASE & L2_BLOCK_MASK)
 	mov	x9, x28
 	bl	build_block_pagetable
@@ -297,8 +308,8 @@ create_pagetables:
 	add	x26, x26, #PAGE_SIZE
 
 	/* Link the l1 -> l2 table */
-	mov	x9, x6
-	mov	x6, x26
+	mov	x9, x5
+	mov	x5, x26
 	bl	link_l1_pagetable
 
 
@@ -307,26 +318,32 @@ create_pagetables:
 	 */
 	add	x27, x26, #PAGE_SIZE
 
+#if defined(SOCDEV_PA) && defined(SOCDEV_VA)
+	/* Create a table for the UART */
+	mov	x5, x27		/* The initial page table */
+	mov	x6, #0
+	mov	x7, #DEVICE_MEM
+	mov	x8, #(SOCDEV_VA)	/* VA start */
+	mov	x9, #(SOCDEV_PA)	/* PA start */
+	bl	build_section_pagetable
+#endif
+
 	/* Create the VA = PA map */
-	mov	x6, x27		/* The initial page table */
-	mov	x7, #1
+	mov	x5, x27		/* The initial page table */
+	mov	x6, #0
+	mov	x7, #NORMAL_UNCACHED /* Uncached as it's only needed early on */
 	mov	x9, x27
 	mov	x8, x9		/* VA start (== PA start) */
 	bl	build_section_pagetable
 
-	/* Create a table for the UART (TODO: Remove) */
-	mov	x7, #0
-	mov	x8, #0x10000000		/* VA start (== PA start) */
-	mov	x9, #0x10000000		/* PA start */
-	bl	build_section_pagetable
-
 	/* Restore the Link register */
-	mov	x30, x5
+	mov	x30, x4
 	ret
 
 /*
  * Builds a 1 GiB page table entry
- *  x6 = L1 table
+ *  x5 = L1 table
+ *  x6 = Shareability attrubute
  *  x7 = Type (0 = Device, 1 = Normal)
  *  x8 = VA start
  *  x9 = PA start (trashed)
@@ -344,13 +361,14 @@ build_section_pagetable:
 	lsl	x12, x7, #2
 	orr	x12, x12, #L1_BLOCK
 	orr	x12, x12, #(ATTR_AF)
+	orr	x12, x12, x6
 
 	/* Only use the output address bits */
 	lsr	x9, x9, #L1_SHIFT
 	orr	x12, x12, x9, lsl #L1_SHIFT
 
 	/* Store the entry */
-	str	x12, [x6, x11, lsl #3]
+	str	x12, [x5, x11, lsl #3]
 
 	ret
 
@@ -360,7 +378,7 @@ build_section_pagetable:
  * This is a link for a 1GiB block of memory with up to 2MiB regions mapped
  * within it by build_block_pagetable.
  *
- *  x6  = L1 table
+ *  x5  = L1 table
  *  x8  = Virtual Address
  *  x9  = L2 PA (trashed)
  *  x11, x12 and x13 are trashed
@@ -381,13 +399,14 @@ link_l1_pagetable:
 	orr	x12, x12, x9, lsl #12
 
 	/* Store the entry */
-	str	x12, [x6, x11, lsl #3]
+	str	x12, [x5, x11, lsl #3]
 
 	ret
 
 /*
  * Builds count 2 MiB page table entry
- *  x6  = L2 table
+ *  x5  = L2 table
+ *  x6  = Shareability attribute
  *  x7  = Type (0 = Device, 1 = Normal)
  *  x8  = VA start
  *  x9  = PA start (trashed)
@@ -406,6 +425,7 @@ build_block_pagetable:
 	lsl	x12, x7, #2
 	orr	x12, x12, #L2_BLOCK
 	orr	x12, x12, #(ATTR_AF)
+	orr	x12, x12, x6
 
 	/* Only use the output address bits */
 	lsr	x9, x9, #L2_SHIFT
@@ -414,7 +434,7 @@ build_block_pagetable:
 1:	orr	x12, x12, x9, lsl #L2_SHIFT
 
 	/* Store the entry */
-	str	x12, [x6, x11, lsl #3]
+	str	x12, [x5, x11, lsl #3]
 
 	/* Clear the address bits */
 	and	x12, x12, #ATTR_MASK_L
@@ -469,16 +489,16 @@ mair:
 		/* Device            Normal, no cache     Normal, write-back */
 	.quad	MAIR_ATTR(0x00, 0) | MAIR_ATTR(0x44, 1) | MAIR_ATTR(0xff, 2)
 tcr:
-	.quad (TCR_TxSZ(64 - VIRT_BITS) | TCR_ASID_16 | TCR_TG1_4K)
+	.quad (TCR_TxSZ(64 - VIRT_BITS) | TCR_ASID_16 | TCR_TG1_4K | \
+	    TCR_CACHE_ATTRS | TCR_SMP_ATTRS)
 sctlr_set:
 	/* Bits to set */
 	.quad (SCTLR_UCI | SCTLR_nTWE | SCTLR_nTWI | SCTLR_UCT | SCTLR_DZE | \
-	    SCTLR_I | SCTLR_SED | SCTLR_M)
+	    SCTLR_I | SCTLR_SED | SCTLR_C | SCTLR_M)
 sctlr_clear:
 	/* Bits to clear */
 	.quad (SCTLR_EE | SCTLR_EOE | SCTLR_WXN | SCTLR_UMA | SCTLR_ITD | \
-	    SCTLR_THEE | SCTLR_CP15BEN | SCTLR_SA0 | SCTLR_SA | SCTLR_C | \
-	    SCTLR_A)
+	    SCTLR_THEE | SCTLR_CP15BEN | SCTLR_SA0 | SCTLR_SA | SCTLR_A)
 
 	.globl abort
 abort:
@@ -499,6 +519,9 @@ pagetable_l1_ttbr1:
 pagetable_l1_ttbr0:
 	.space	PAGE_SIZE
 pagetable_end:
+
+el2_pagetable:
+	.space	PAGE_SIZE
 
 	.globl init_pt_va
 init_pt_va:

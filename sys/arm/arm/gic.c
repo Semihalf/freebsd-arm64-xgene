@@ -341,8 +341,11 @@ static void gic_dispatch(device_t dev, struct trapframe *frame)
 		active_irq &= 0x3FF;
 
 		if (active_irq == 0x3FF) {
+		/* Temporarily disabling message */
+#if 0
 			if (first)
 				printf("Spurious interrupt detected\n");
+#endif
 			return;
 		}
 

@@ -98,6 +98,15 @@ static MALLOC_DEFINE(M_AHCI, "AHCI driver", "AHCI driver data buffers");
 #define RECOVERY_REQUEST_SENSE	2
 #define recovery_slot		spriv_field1
 
+struct ahci_port_regs {
+	uint32_t	portcmd;
+	uint32_t	portclb;
+	uint32_t	portclbu;
+	uint32_t	portfb;
+	uint32_t	portfbu;
+	uint32_t	portie;
+};
+
 int
 ahci_ctlr_setup(device_t dev)
 {
@@ -1116,6 +1125,15 @@ ahci_notify_events(struct ahci_channel *ch, u_int32_t status)
 static void
 ahci_done(struct ahci_channel *ch, union ccb *ccb)
 {
+
+	if ((ch->quirks & AHCI_Q_XGENE_BUG) != 0 &&
+		ccb->ccb_h.func_code == XPT_ATA_IO &&
+		(ccb->ataio.cmd.command == ATA_ATA_IDENTIFY ||
+		 ccb->ataio.cmd.command == ATA_PACKET_CMD)) {
+		ahci_stop(ch);
+		ahci_start_fr(ch);
+		ahci_start(ch, 1);
+	}
 
 	mtx_assert(&ch->mtx, MA_OWNED);
 	if ((ccb->ccb_h.func_code & XPT_FC_QUEUED) == 0 ||
@@ -2241,6 +2259,24 @@ ahci_reset_to(void *arg)
 	callout_schedule(&ch->reset_timer, hz / 10);
 }
 
+static void ahci_save_port_regs(const struct ahci_channel *ch, struct ahci_port_regs *p)
+{
+	p->portcmd = ATA_INL(ch->r_mem, AHCI_P_CMD);
+	p->portclb = ATA_INL(ch->r_mem, AHCI_P_CLB);
+	p->portclbu = ATA_INL(ch->r_mem, AHCI_P_CLBU);
+	p->portfb = ATA_INL(ch->r_mem, AHCI_P_FB);
+	p->portfbu = ATA_INL(ch->r_mem, AHCI_P_FBU);
+}
+
+static void ahci_restore_port_regs(const struct ahci_channel *ch, const struct ahci_port_regs *p)
+{
+	ATA_OUTL(ch->r_mem, AHCI_P_CMD, p->portcmd);
+	ATA_OUTL(ch->r_mem, AHCI_P_CLB, p->portclb);
+	ATA_OUTL(ch->r_mem, AHCI_P_CLBU, p->portclbu);
+	ATA_OUTL(ch->r_mem, AHCI_P_FB, p->portfb);
+	ATA_OUTL(ch->r_mem, AHCI_P_FBU, p->portfbu);
+}
+
 static void
 ahci_reset(struct ahci_channel *ch)
 {
@@ -2425,11 +2461,29 @@ ahci_sata_connect(struct ahci_channel *ch)
 	return (1);
 }
 
+
+
 static int
 ahci_sata_phy_reset(struct ahci_channel *ch)
 {
 	int sata_rev;
 	uint32_t val;
+	int	ret = 0;
+	struct ahci_port_regs pregs;
+
+	if (ch->quirks & AHCI_Q_XGENE_BUG) {
+		union ccb cb;
+		struct ahci_rx_fis *fis = (struct ahci_rx_fis *)ch->dma.rfis;
+
+		ata_reset_cmd(&cb.ataio);
+		bzero(fis->rfis, sizeof(fis->rfis));
+		fis->rfis[0] = 0x27;
+		fis->rfis[1] = cb.ccb_h.target_id & 0x0f;
+		fis->rfis[2] = 0x80;
+		fis->rfis[15] = cb.ataio.cmd.control;
+
+		ahci_save_port_regs(ch, &pregs);
+	}
 
 	if (ch->listening) {
 		val = ATA_INL(ch->r_mem, AHCI_P_CMD);
@@ -2461,9 +2515,15 @@ ahci_sata_phy_reset(struct ahci_channel *ch)
 			ch->listening = 1;
 		} else if (ch->pm_level > 0)
 			ATA_OUTL(ch->r_mem, AHCI_P_SCTL, ATA_SC_DET_DISABLE);
-		return (0);
+		/* return value is 0 */
+		goto out;
 	}
-	return (1);
+	ret = 1;
+out:
+	if (ch->quirks & AHCI_Q_XGENE_BUG)
+		ahci_restore_port_regs(ch, &pregs);
+
+	return (ret);
 }
 
 static int

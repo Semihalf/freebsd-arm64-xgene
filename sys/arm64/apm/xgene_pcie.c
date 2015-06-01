@@ -433,27 +433,6 @@ xgene_pcie_set_cfg_offset(struct xgene_pcie_softc *sc, u_int bus)
 		sc->offset = 0;
 }
 
-/*
- * X-Gene PCIe port uses BAR0-BAR1 of RC's configuration space as
- * the translation from PCI bus to native BUS.  Entire DDR region
- * is mapped into PCIe space using these registers, so it can be
- * reached by DMA from EP devices.  The BAR0/1 of bridge should be
- * hidden during enumeration to avoid the sizing and resource allocation
- * by PCIe core.
- */
-static boolean_t
-xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *sc, u_int bus,
-    u_int reg)
-{
-	boolean_t retval = false;
-
-	if ((bus == 0) && (sc->mode == ROOT_CMPLX) &&
-	    ((reg == PCIR_BAR(0)) || (reg == PCIR_BAR(1))))
-		retval = true;
-
-	return (retval);
-}
-
 /* clear BAR configuration which was done by firmware */
 static void
 xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *sc)
@@ -908,7 +887,7 @@ xgene_pcie_setup_ib_reg(struct xgene_pcie_softc *sc, uint64_t cpu_addr,
 	addr = (lower_32_bits(cpu_addr) & PCIM_BAR_MEM_BASE) | flags;
 
 	switch (region) {
-	case 0:
+	case 2:
 		xgene_pcie_set_ib_mask(sc, XGENE_BRIDGE_CFG_4, flags, size);
 		xgene_pcie_cfg_write(PCIR_BAR(0), addr);
 		xgene_pcie_cfg_write(PCIR_BAR(1), higher_32_bits(cpu_addr));
@@ -919,7 +898,7 @@ xgene_pcie_setup_ib_reg(struct xgene_pcie_softc *sc, uint64_t cpu_addr,
 		xgene_pcie_csr_write(XGENE_IR2MSK, lower_32_bits(mask));
 		pim_addr = XGENE_PIM2_1L;
 		break;
-	case 2:
+	case 0:
 		xgene_pcie_csr_write(XGENE_IBAR3L, addr);
 		xgene_pcie_csr_write(XGENE_IBAR3L + 0x04, cpu_addr >> 32);
 		xgene_pcie_csr_write(XGENE_IR3MSKL, lower_32_bits(mask));
@@ -1156,27 +1135,25 @@ xgene_pcie_read_config(device_t dev, u_int bus, u_int slot,
 	if (sc->mode == ROOT_CMPLX && bus == 0 && (slot != 0 || func != 0))
 		return (retval);
 
-	if (!xgene_pcie_hide_root_cmplx_bars(sc, bus, reg)) {
 		mtx_lock_spin(&sc->rw_mtx);
 
-		xgene_pcie_set_rtdid_reg(sc, bus, slot, func);
-		xgene_pcie_set_cfg_offset(sc, bus);
-		switch (bytes) {
-		case 1:
-			retval = xgene_pcie_cfg_r8(sc, reg);
-			break;
-		case 2:
-			retval = xgene_pcie_cfg_r16(sc, reg);
-			break;
-		case 4:
-			retval = xgene_pcie_cfg_r32(sc, reg);
-			break;
-		default:
-			retval = ~0U;
-		}
-
-		mtx_unlock_spin(&sc->rw_mtx);
+	xgene_pcie_set_rtdid_reg(sc, bus, slot, func);
+	xgene_pcie_set_cfg_offset(sc, bus);
+	switch (bytes) {
+	case 1:
+		retval = xgene_pcie_cfg_r8(sc, reg);
+		break;
+	case 2:
+		retval = xgene_pcie_cfg_r16(sc, reg);
+		break;
+	case 4:
+		retval = xgene_pcie_cfg_r32(sc, reg);
+		break;
+	default:
+		retval = ~0U;
 	}
+
+	mtx_unlock_spin(&sc->rw_mtx);
 
 	return (retval);
 }
@@ -1190,29 +1167,26 @@ xgene_pcie_write_config(device_t dev, u_int bus, u_int slot,
 	if (bus > 255 || slot > 31 || func > 7 || reg > 4095)
 			return;
 
-	if (!xgene_pcie_hide_root_cmplx_bars(sc, bus, reg)) {
+	mtx_lock_spin(&sc->rw_mtx);
 
-		mtx_lock_spin(&sc->rw_mtx);
+	xgene_pcie_set_rtdid_reg(sc, bus, slot, func);
+	xgene_pcie_set_cfg_offset(sc, bus);
 
-		xgene_pcie_set_rtdid_reg(sc, bus, slot, func);
-		xgene_pcie_set_cfg_offset(sc, bus);
-
-		switch (bytes) {
-		case 1:
-			xgene_pcie_cfg_w8(sc, reg, (uint8_t)val);
-			break;
-		case 2:
-			xgene_pcie_cfg_w16(sc, reg, (uint16_t)val);
-			break;
-		case 4:
-			xgene_pcie_cfg_w32(sc, reg, val);
-			break;
-		default:
-			return;
-		}
-
-		mtx_unlock_spin(&sc->rw_mtx);
+	switch (bytes) {
+	case 1:
+		xgene_pcie_cfg_w8(sc, reg, (uint8_t)val);
+		break;
+	case 2:
+		xgene_pcie_cfg_w16(sc, reg, (uint16_t)val);
+		break;
+	case 4:
+		xgene_pcie_cfg_w32(sc, reg, val);
+		break;
+	default:
+		return;
 	}
+
+	mtx_unlock_spin(&sc->rw_mtx);
 }
 
 static int

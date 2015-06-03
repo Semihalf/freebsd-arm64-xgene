@@ -139,6 +139,14 @@ virtdone:
 	.quad	__bss_start
 .Lend:
 	.quad	_end
+#ifdef EARLY_UART_PA
+.Learly_uart_pa:
+	.quad	EARLY_UART_PA
+#endif
+#ifdef EARLY_UART_VA
+.Learly_uart_va:
+	.quad	EARLY_UART_VA
+#endif
 
 #ifdef SMP
 /*
@@ -353,13 +361,13 @@ create_pagetables:
 	 */
 	add	x27, x26, #PAGE_SIZE
 
-#if defined(SOCDEV_PA) && defined(SOCDEV_VA)
+#if defined(EARLY_UART_PA) && defined(EARLY_UART_VA)
 	/* Create a table for the UART */
 	mov	x5, x27		/* The initial page table */
 	mov	x6, #0
 	mov	x7, #DEVICE_MEM
-	mov	x8, #(SOCDEV_VA)	/* VA start */
-	mov	x9, #(SOCDEV_PA)	/* PA start */
+	ldr	x8, .Learly_uart_va	/* VA start */
+	ldr	x9, .Learly_uart_pa	/* PA start */
 	bl	build_section_pagetable
 #endif
 

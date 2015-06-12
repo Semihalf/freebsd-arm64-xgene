@@ -596,9 +596,6 @@ ipi_cpu(int cpu, u_int ipi)
 	CPU_ZERO(&cpus);
 	CPU_SET(cpu, &cpus);
 
-	/* ARM64TODO: This will be fixed with arm_intrng */
-	ipi += 16;
-
 	CTR2(KTR_SMP, "ipi_cpu: cpu: %d, ipi: %x", cpu, ipi);
 	PIC_IPI_SEND(root_pic, cpus, ipi);
 }
@@ -606,9 +603,6 @@ ipi_cpu(int cpu, u_int ipi)
 void
 ipi_selected(cpuset_t cpus, u_int ipi)
 {
-
-	/* ARM64TODO: This will be fixed with arm_intrng */
-	ipi += 16;
 
 	CTR1(KTR_SMP, "ipi_selected: ipi: %x", ipi);
 	PIC_IPI_SEND(root_pic, cpus, ipi);

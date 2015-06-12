@@ -569,7 +569,7 @@ void
 arm_unmask_ipi(u_int ipi)
 {
 
-	arm_unmask_irq(ipi + 16);
+	arm_unmask_irq(ipi);
 }
 
 void

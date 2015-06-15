@@ -141,6 +141,7 @@ handle_el1h_error:
 	brk	0xf13
 
 handle_el0_sync:
+	msr	daifset, #2
 	/* WMA: workaround, invalidate ALL tlbs. To be fixed. */
 	dsb	sy
 	tlbi	vmalle1is
@@ -149,9 +150,7 @@ handle_el0_sync:
 	/* END OF WMA WORKAROUND */
 	save_registers 0
 	mov	x0, sp
-	msr	daifclr, #2
 	bl	do_el0_sync
-	msr	daifset, #2
 	do_ast
 	restore_registers 0
 	eret

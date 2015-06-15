@@ -311,7 +311,9 @@ do_el0_sync(struct trapframe *frame)
 #endif
 		break;
 	case EXCP_SVC:
+		__asm __volatile("msr	daifclr, #2");
 		svc_handler(frame);
+		__asm __volatile("msr	daifset, #2");
 		break;
 	case EXCP_INSN_ABORT_L:
 	case EXCP_DATA_ABORT_L:

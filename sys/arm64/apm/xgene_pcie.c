@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/cpuset.h>
 #include <sys/limits.h>
 
+
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
@@ -121,7 +122,6 @@ __FBSDID("$FreeBSD$");
 #define	xgene_pcie_cfg_write(reg, val)					\
 	bus_write_4(sc->res[XGENE_PCIE_CFG], sc->offset + (reg), htole32((val)))
 
-#define XGENE_PCIE_DEBUG
 #ifdef XGENE_PCIE_DEBUG
 #define printdbg(fmt, args...)		\
 do {					\
@@ -181,7 +181,7 @@ struct xgene_pcie_softc {
 	struct mtx		rw_mtx;
 	boolean_t		mtx_init;
 
-	int irq_min, irq_max, irq_alloc;
+	u_int irq_min, irq_max, irq_alloc;
 };
 
 static struct resource_spec xgene_pcie_mem_spec[] = {
@@ -454,6 +454,27 @@ xgene_pcie_set_cfg_offset(struct xgene_pcie_softc *sc, u_int bus)
 		sc->offset = XGENE_AXI_EP_CFG_ACCESS;
 	else
 		sc->offset = 0;
+}
+
+/*
+ * X-Gene PCIe port uses BAR0-BAR1 of RC's configuration space as
+ * the translation from PCI bus to native BUS.  Entire DDR region
+ * is mapped into PCIe space using these registers, so it can be
+ * reached by DMA from EP devices.  The BAR0/1 of bridge should be
+ * hidden during enumeration to avoid the sizing and resource allocation
+ * by PCIe core.
+ */
+static boolean_t
+xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *sc, u_int bus,
+    u_int reg)
+{
+	boolean_t retval = false;
+
+	if ((bus == 0) && (sc->mode == ROOT_CMPLX) &&
+	    ((reg == PCIR_BAR(0)) || (reg == PCIR_BAR(1))))
+		retval = true;
+
+	return (retval);
 }
 
 /* clear BAR configuration which was done by firmware */
@@ -1108,7 +1129,6 @@ xgene_pcie_linkup_status(struct xgene_pcie_softc *sc)
 		device_printf(sc->dev,"(RC) link down\n");
 }
 
-
 static int
 xgene_pcie_setup(struct xgene_pcie_softc *sc)
 {
@@ -1215,7 +1235,7 @@ xgene_pcie_read_config(device_t dev, u_int bus, u_int slot,
 	if (sc->mode == ROOT_CMPLX && bus == 0 && (slot != 0 || func != 0))
 		return (retval);
 
-		mtx_lock_spin(&sc->rw_mtx);
+	mtx_lock_spin(&sc->rw_mtx);
 
 	xgene_pcie_set_rtdid_reg(sc, bus, slot, func);
 	xgene_pcie_set_cfg_offset(sc, bus);
@@ -1267,10 +1287,11 @@ xgene_pcie_write_config(device_t dev, u_int bus, u_int slot,
 		xgene_pcie_cfg_w32(sc, reg, val);
 		break;
 	default:
-		return;
+		break;
 	}
 
 	mtx_unlock_spin(&sc->rw_mtx);
+	return;
 }
 
 static int

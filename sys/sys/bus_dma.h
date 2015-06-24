@@ -289,6 +289,8 @@ void _bus_dmamap_sync(bus_dma_tag_t, bus_dmamap_t, bus_dmasync_op_t);
 	do {							\
 		if ((dmamap) != NULL)				\
 			_bus_dmamap_sync(dmat, dmamap, op);	\
+		else						\
+			mb();					\
 	} while (0)
 
 /*

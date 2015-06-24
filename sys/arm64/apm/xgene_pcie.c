@@ -425,24 +425,6 @@ xgene_pcie_set_rtdid_reg(struct xgene_pcie_softc *sc, u_int bus, u_int slot,
 }
 
 /*
- * X-Gene PCIe port uses BAR0-BAR1 of RC's configuration space as
- * the translation from PCI bus to native BUS.  Entire DDR region
- * is mapped into PCIe space using these registers, so it can be
- * reached by DMA from EP devices.  The BAR0/1 of bridge should be
- * hidden during enumeration to avoid the sizing and resource allocation
- * by PCIe core.
- */
-static boolean_t xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *sc,
-    u_int bus, u_int reg)
-{
-	if (bus == 0 && sc->mode == ROOT_CMPLX &&
-			(reg == PCIR_BAR(0) || reg == PCIR_BAR(1)))
-		return true;
-
-	return false;
-}
-
-/*
  * When the address bit [17:16] is 2'b01, the Configuration access will be
  * treated as Type 1 and it will be forwarded to external PCIe device.
  */
@@ -1112,7 +1094,7 @@ xgene_pcie_init_irqs(struct xgene_pcie_softc *sc)
 	sc->irq_max = ofw_bus_map_intr(sc->dev, 0, 3, imax);
 
 	sc->irq_alloc = sc->irq_min;
-	printfdbg("IRQ: min = %d max = %d\n", sc->irq_min, sc->irq_max);
+	printdbg("IRQ: min = %d max = %d\n", sc->irq_min, sc->irq_max);
 
 	return;
 }

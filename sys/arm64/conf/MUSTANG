@@ -20,6 +20,7 @@
 
 cpu		ARM64
 ident		MUSTANG
+include		"../apm/std.xgene"
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
 makeoptions	WITH_CTF=1		# Run ctfconvert(1) for DTrace support
@@ -38,7 +39,7 @@ options 	UFS_GJOURNAL		# Enable gjournal-based UFS journaling
 options 	QUOTA			# Enable disk quotas for UFS
 options 	MD_ROOT			# MD is a potential root device
 # XXX: This is for test purposes
-options		ROOTDEVNAME=\"ufs:da0s2a\"
+options		ROOTDEVNAME=\"ufs:da0\"
 
 #options 	NFSCL			# New Network Filesystem Client
 #options 	NFSD			# New Network Filesystem Server
@@ -123,10 +124,9 @@ device		md		# Memory "disks"
 device		firmware	# firmware assist module
 
 # PCIe support
-options		NEW_PCIB
-options 	XGENE_PCI_MSIX
-device		pci             # SoC PCIe support(NEW_PCIB option is required)
+device		pci             # SoC PCIe support
 device		ixgbe
+device		em
 device		inet
 
 # The `bpf' device enables the Berkeley Packet Filter.

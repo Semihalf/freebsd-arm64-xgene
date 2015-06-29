@@ -29,7 +29,10 @@
 #ifndef __IF_XGE_VAR_H__
 #define	__IF_XGE_VAR_H__
 
+#include <net/if_media.h>
+
 #include "xgene_enet_main.h"
+#include "xgene_enet_sgmac.h"
 
 DECLARE_CLASS(xge_driver);
 
@@ -57,8 +60,12 @@ enum phy_conn_type {
 	PHY_CONN_SGMII,
 };
 
+#define	PORT_ID_INVALID		(-1)
+#define	PORT_ID_MAX		(1)
+
 #define	PHY_CONN_UNKNOWN_STR	"Unknown"
 #define	PHY_CONN_RGMII_STR	"RGMII"
+#define	PHY_CONN_SGMII_STR	"SGMII"
 
 struct xge_buff {
 	bus_dma_tag_t		dmat;
@@ -69,15 +76,20 @@ struct xge_buff {
 
 struct xge_softc {
 	device_t		dev;
-	device_t		miibus;
+	device_t		miibus;		/* RGMII */
 	struct mtx		globl_mtx;
 
 	struct ifnet *		ifp;
 
+	struct ifmedia		ifmedia;	/* SGMII */
+	/* Local copy of the link state */
+	boolean_t		link_is_up;	/* SGMII */
+
 	int			wd_timeout;
-	struct callout		wd_callout;
+	struct callout		timer_callout;
 	enum phy_conn_type	phy_conn_type;
 	int			phyaddr;
+	int			portid;
 	uint8_t			hwaddr[ETHER_ADDR_LEN];
 	uint32_t		if_flags;
 

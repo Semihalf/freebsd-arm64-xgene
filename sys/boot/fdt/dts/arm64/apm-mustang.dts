@@ -40,15 +40,11 @@
 	status = "ok";
 };
 
-&enet0 {
+&sgenet0 {
 	status = "ok";
 };
 
-&enet1 {
-	status = "ok";
-};
-
-&enet4 {
+&sgenet1 {
 	status = "ok";
 };
 

@@ -113,6 +113,13 @@ __FBSDID("$FreeBSD$");
 
 MALLOC_DEFINE(M_XGE, "xge", "X-Gene ENET dynamic memory");
 
+extern int xgene_mii_phy_read(struct xgene_enet_pdata *, uint8_t, uint32_t);
+extern int xgene_mii_phy_write(struct xgene_enet_pdata *, uint8_t, uint32_t,
+    uint16_t);
+
+static int xge_sgmac_media_change(struct ifnet *);
+static void xge_sgmac_media_status(struct ifnet *, struct ifmediareq *);
+
 static void xge_mac_get_hwaddr(struct xge_softc *);
 static void xge_delete_desc_rings(struct xge_softc *);
 static void xge_qm_deq_intr(void *);
@@ -127,8 +134,8 @@ static void xge_tx_completion(struct xgene_enet_desc_ring *,
 static void xge_do_rx(struct xge_softc *);
 static void xge_rx_completion(struct xgene_enet_desc_ring *,
     struct xgene_enet_raw_desc *);
-static int xge_media_change(struct ifnet *);
-static void xge_media_status(struct ifnet *, struct ifmediareq *);
+static int xge_gmac_media_change(struct ifnet *);
+static void xge_gmac_media_status(struct ifnet *, struct ifmediareq *);
 static void xge_tick(void *);
 static int xge_init_hw(struct xge_softc *);
 static void xge_setup_ops(struct xge_softc *);
@@ -161,17 +168,21 @@ xge_attach(device_t dev)
 	int rid;
 
 	/*
-	 * XXX: Limit driver to RGMII (MENET) port only for now!
+	 * XXX: Limit driver to RGMII (MENET) &
+	 *      SGMII (ENET) ports for now.
 	 */
-	if (sc->phy_conn_type != PHY_CONN_RGMII)
+	if (sc->phy_conn_type != PHY_CONN_RGMII &&
+	    sc->phy_conn_type != PHY_CONN_SGMII) {
+		device_printf(dev, "PHY connection type not supported\n");
 		return (ENXIO);
+	}
 
 	sc->dev = dev;
 
 	/* Initialize global lock */
 	XGE_GLOBAL_LOCK_INIT(sc);
 	/* Initialize timeout */
-	callout_init_mtx(&sc->wd_callout, &sc->globl_mtx, 0);
+	callout_init_mtx(&sc->timer_callout, &sc->globl_mtx, 0);
 	/* Initialize watchdog - inactive */
 	sc->wd_timeout = 0;
 
@@ -242,6 +253,15 @@ xge_attach(device_t dev)
 	} else {
 		pdata->mcx_mac_addr = BLOCK_AXG_MAC_OFFSET;
 		pdata->mcx_mac_csr_addr = BLOCK_AXG_MAC_CSR_OFFSET;
+	}
+
+	if (sc->phy_conn_type == PHY_CONN_SGMII) {
+		if (sc->portid == PORT_ID_INVALID ||
+		    sc->portid > PORT_ID_MAX) {
+			device_printf(dev, "Invalid port-id specified\n");
+			return (ENXIO);
+		}
+		pdata->port_id = sc->portid;
 	}
 
 #ifdef XGE_DEBUG
@@ -315,8 +335,8 @@ xge_attach(device_t dev)
 
 	/* Attach PHYs */
 	if (sc->phy_conn_type == PHY_CONN_RGMII) {
-		err = mii_attach(dev, &sc->miibus, ifp, xge_media_change,
-		    xge_media_status, BMSR_DEFCAPMASK, sc->phyaddr,
+		err = mii_attach(dev, &sc->miibus, ifp, xge_gmac_media_change,
+		    xge_gmac_media_status, BMSR_DEFCAPMASK, sc->phyaddr,
 		    MII_OFFSET_ANY, 0);
 		if (err != 0) {
 			device_printf(dev, "Cannot attach PHY\n");
@@ -324,6 +344,27 @@ xge_attach(device_t dev)
 			xge_detach(dev);
 			return (err);
 		}
+	} else if (sc->phy_conn_type == PHY_CONN_SGMII) {
+		ifmedia_init(&sc->ifmedia, IFM_IMASK, xge_sgmac_media_change,
+		    xge_sgmac_media_status);
+
+		/*
+		 * 10/100/1000 available. Full duplex only.
+		 */
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_10_T | IFM_FDX),
+		    0, NULL);
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_100_TX | IFM_FDX),
+		    0, NULL);
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_1000_T | IFM_FDX),
+		    0, NULL);
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX),
+		    0, NULL);
+
+		 /*
+		  * XXX: Currently HW layer operates only in 1Gbps mode so set
+		  *      it here as a default and set AUTO in the future.
+		  */
+		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_1000_T | IFM_FDX));
 	}
 
 	ether_ifattach(ifp, sc->hwaddr);
@@ -367,13 +408,24 @@ xge_detach(device_t dev)
 	if (device_is_attached(dev)) {
 		sc->ifp->if_flags &= ~IFF_UP;
 		ether_ifdetach(sc->ifp);
-		callout_drain(&sc->wd_callout);
+		callout_drain(&sc->timer_callout);
 	}
 
-	/* Release MII stuff */
-	if (sc->miibus != NULL)
-		device_delete_child(dev, sc->miibus);
-	bus_generic_detach(dev);
+	switch (sc->phy_conn_type) {
+	case PHY_CONN_RGMII:
+		/* Release MII stuff */
+		if (sc->miibus != NULL)
+			device_delete_child(dev, sc->miibus);
+		bus_generic_detach(dev);
+		break;
+	case PHY_CONN_SGMII:
+		/* Remove all ifmedia configurations */
+		ifmedia_removeall(&sc->ifmedia);
+		break;
+	default:
+		/* Should not be possible to get here so just do nothing. */
+		break;
+	}
 
 	/* Release interrupt resources */
 	if (sc->qm_deq_irq != NULL) {
@@ -1149,8 +1201,8 @@ xge_init_locked(struct xge_softc *sc)
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 
-	/* Schedule watchdog timeout */
-	callout_reset(&sc->wd_callout, hz, xge_tick, sc);
+	/* Schedule timer callout */
+	callout_reset(&sc->timer_callout, hz, xge_tick, sc);
 }
 
 static void
@@ -1214,8 +1266,12 @@ xge_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
-		mii_sc = device_get_softc(sc->miibus);
-		err = ifmedia_ioctl(ifp, ifr, &mii_sc->mii_media, cmd);
+		if (sc->miibus != NULL) {
+			mii_sc = device_get_softc(sc->miibus);
+			err = ifmedia_ioctl(ifp, ifr, &mii_sc->mii_media, cmd);
+		} else
+			err = ifmedia_ioctl(ifp, ifr, &sc->ifmedia, cmd);
+
 		break;
 
 	case SIOCSIFCAP:
@@ -1262,7 +1318,7 @@ xge_stop_locked(struct xge_softc *sc)
 	mac_ops = pdata->mac_ops;
 
 	/* Stop tick engine */
-	callout_stop(&sc->wd_callout);
+	callout_stop(&sc->timer_callout);
 	/* Clean watchdog */
 	sc->wd_timeout = 0;
 
@@ -1655,8 +1711,30 @@ xge_miibus_writereg(device_t dev, int phy, int reg, int val)
 	return (xgene_mii_phy_write(pdata, phy, reg, val));
 }
 
+void
+xge_miibus_statchg(device_t dev)
+{
+	struct xge_softc *sc;
+	struct mii_data *mii;
+
+	sc = device_get_softc(dev);
+
+	/*
+	 * This routine is called as a result of
+	 * mii_mediachg() so lock should be acquired
+	 */
+	XGE_GLOBAL_LOCK_ASSERT(sc);
+
+	mii = device_get_softc(sc->miibus);
+
+	if ((mii->mii_media_status & IFM_ACTIVE) != 0)
+		sc->link_is_up = TRUE;
+	else
+		sc->link_is_up = FALSE;
+}
+
 static int
-xge_media_change_locked(struct xge_softc *sc)
+xge_gmac_media_change_locked(struct xge_softc *sc)
 {
 	struct mii_data *mii_sc;
 
@@ -1668,7 +1746,7 @@ xge_media_change_locked(struct xge_softc *sc)
 }
 
 static int
-xge_media_change(struct ifnet *ifp)
+xge_gmac_media_change(struct ifnet *ifp)
 {
 	struct xge_softc *sc;
 	int err;
@@ -1676,14 +1754,14 @@ xge_media_change(struct ifnet *ifp)
 	sc = ifp->if_softc;
 
 	XGE_GLOBAL_LOCK(sc);
-	err = xge_media_change_locked(sc);
+	err = xge_gmac_media_change_locked(sc);
 	XGE_GLOBAL_UNLOCK(sc);
 
 	return (err);
 }
 
 static void
-xge_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
+xge_gmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 {
 	struct xge_softc *sc;
 	struct mii_data *mii_sc;
@@ -1696,6 +1774,77 @@ xge_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 	ifmr->ifm_active = mii_sc->mii_media_active;
 	ifmr->ifm_status = mii_sc->mii_media_status;
 	XGE_GLOBAL_UNLOCK(sc);
+}
+
+/*****************************************************************************
+ ****************************** Ifmedia **************************************
+ *****************************************************************************/
+
+static boolean_t
+xge_sgmac_update_status_locked(struct ifnet *ifp)
+{
+	struct xge_softc *sc;
+	struct xgene_enet_pdata *pdata;
+	struct xgene_mac_ops *mac_ops;
+	boolean_t link_was_up, link_is_up;
+
+	sc = ifp->if_softc;
+	pdata = &sc->pdata;
+	mac_ops = pdata->mac_ops;
+
+	XGE_GLOBAL_LOCK_ASSERT(sc);
+	link_was_up = sc->link_is_up;
+	link_is_up = !!xgene_enet_link_status(pdata);
+
+	if (link_is_up) {
+		if (!link_was_up) {
+			if_link_state_change(ifp, LINK_STATE_UP);
+			mac_ops->init(pdata);
+			mac_ops->rx_enable(pdata);
+			mac_ops->tx_enable(pdata);
+		}
+
+	} else {
+		if (link_was_up) {
+			if_link_state_change(ifp, LINK_STATE_DOWN);
+			mac_ops->rx_disable(pdata);
+			mac_ops->tx_disable(pdata);
+		}
+	}
+
+	sc->link_is_up = link_is_up;
+
+	return (link_is_up);
+}
+
+static void
+xge_sgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
+{
+	struct xge_softc *sc;
+	sc = ifp->if_softc;
+	boolean_t link_is_up;
+
+	sc = ifp->if_softc;
+
+	XGE_GLOBAL_LOCK(sc);
+	link_is_up = xge_sgmac_update_status_locked(ifp);
+
+	ifmr->ifm_status = IFM_AVALID;
+	ifmr->ifm_active = IFM_ETHER;
+
+	if (link_is_up) {
+		/* Device attached to working network */
+		ifmr->ifm_status |= IFM_ACTIVE;
+	}
+	XGE_GLOBAL_UNLOCK(sc);
+}
+
+static int
+xge_sgmac_media_change(struct ifnet *ifp __unused)
+{
+
+	/* XXX: We can't really change anything until HW layer allows that */
+	return (0);
 }
 
 /*****************************************************************************
@@ -1731,26 +1880,36 @@ xge_tick(void *arg)
 	struct xge_softc *sc;
 	struct mii_data *mii_sc;
 	struct ifnet *ifp;
-	boolean_t link_was_down;
+	boolean_t link_was_up;
 
 	sc = arg;
-	mii_sc = device_get_softc(sc->miibus);
 	ifp = sc->ifp;
 
 	XGE_GLOBAL_LOCK_ASSERT(sc);
-
+	/* Disable watchdog or reset port */
 	xge_watchdog(sc);
 
-	link_was_down = ((mii_sc->mii_media_status & IFM_ACTIVE) == 0) ;
-	mii_tick(mii_sc);
-	if (link_was_down && ((mii_sc->mii_media_status & IFM_ACTIVE) != 0) &&
-	    !IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
+	link_was_up = sc->link_is_up;
+
+	switch (sc->phy_conn_type) {
+	case PHY_CONN_RGMII:
+		mii_sc = device_get_softc(sc->miibus);
+		mii_tick(mii_sc);
+		break;
+	case PHY_CONN_SGMII:
+		xge_sgmac_update_status_locked(ifp);
+		break;
+	default:
+		panic("%s: callout from unsupported port type", __func__);
+	}
+
+	if (!link_was_up && sc->link_is_up && !IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		/* Start transmission here since the link went up */
 		xge_txstart_locked(sc);
 	}
 
 	/* Schedule another check one second from now. */
-	callout_reset(&sc->wd_callout, hz, xge_tick, sc);
+	callout_reset(&sc->timer_callout, hz, xge_tick, sc);
 }
 
 /*****************************************************************************
@@ -1809,6 +1968,11 @@ xge_setup_ops(struct xge_softc *sc)
 		pdata->mac_ops = &xgene_gmac_ops;
 		pdata->port_ops = &xgene_gport_ops;
 		pdata->rm = RM3;
+		break;
+	case PHY_CONN_SGMII:
+		pdata->mac_ops = &xgene_sgmac_ops;
+		pdata->port_ops = &xgene_sgport_ops;
+		pdata->rm = RM1;
 		break;
 	default:
 #if 0

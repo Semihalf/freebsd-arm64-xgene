@@ -161,9 +161,9 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 #endif
 	uint32_t prod_tail;
 	void *buf;
-	
-	cons_head = br->br_cons_head;
-	prod_tail = br->br_prod_tail;
+
+	cons_head = atomic_load_acq_32(&br->br_cons_head);
+	prod_tail = atomic_load_acq_32(&br->br_prod_tail);
 	
 	cons_next = (cons_head + 1) & br->br_cons_mask;
 #ifdef PREFETCH_DEFINED

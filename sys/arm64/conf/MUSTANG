@@ -108,6 +108,10 @@ device		ch
 
 device		ahci
 
+# Networking
+device		xge
+device		mii
+
 # Pseudo devices.
 device		loop		# Network loopback
 device		random		# Entropy device
@@ -121,7 +125,7 @@ device		firmware	# firmware assist module
 # The `bpf' device enables the Berkeley Packet Filter.
 # Be aware of the administrative consequences of enabling this!
 # Note that 'bpf' is required for DHCP.
-#device		bpf		# Berkeley packet filter
+device		bpf		# Berkeley packet filter
 
 options 	FDT
 options 	FDT_CLOCK

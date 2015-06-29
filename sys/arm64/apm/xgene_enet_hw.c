@@ -189,6 +189,7 @@ out:
 	xgene_enet_clr_ring_state(ring);
 }
 
+/* TODO: Use this function in FreeBSD driver */
 #if 0
 void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 			    struct xgene_enet_pdata *pdata,
@@ -371,7 +372,7 @@ xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
 	PHY_CONTROL_SET(&wr_data, data);
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_CONTROL_ADDR, wr_data);
 	do {
-#if 0
+#if !defined(__FreeBSD__)
 		usleep_range(5, 10);
 #else
 		udelay(10);
@@ -400,7 +401,7 @@ xgene_mii_phy_read(struct xgene_enet_pdata *pdata,
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_ADDRESS_ADDR, addr);
 	xgene_enet_wr_mcx_mac(pdata, MII_MGMT_COMMAND_ADDR, READ_CYCLE_MASK);
 	do {
-#if 0
+#if !defined(__FreeBSD__)
 		usleep_range(5, 10);
 #else
 		udelay(10);
@@ -455,7 +456,7 @@ static int xgene_enet_ecc_init(struct xgene_enet_pdata *pdata)
 
 	xgene_enet_wr_diag_csr(pdata, ENET_CFG_MEM_RAM_SHUTDOWN_ADDR, 0x0);
 	do {
-#if 0
+#if !defined(__FreeBSD__)
 		usleep_range(100, 110);
 #else
 		DELAY(110);
@@ -629,7 +630,7 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 	if (!xgene_ring_mgr_init(pdata))
 		return -ENODEV;
 
-#if 0
+#if !defined(__FreeBSD__)
 	if (pdata->clk) {
 		clk_prepare_enable(pdata->clk);
 		clk_disable_unprepare(pdata->clk);
@@ -637,49 +638,6 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 		xgene_enet_ecc_init(pdata);
 	}
 #else
-	/*
-	 * XXX: For some reason this sequence breaks MENET operations.
-	 *      Disable it for now.
-	 */
-#if 0
-	/* XXX: Move it when the FreeBSD's clocks framework is ready */
-#define	XGENE_ENET_SRST		0xc000UL
-#define	 XGENE_ENET_SRST_MASK	0xf
-
-#define	XGENE_ENET_CLKEN	0xc008UL
-#define	 XGENE_ENET_CLKEN_MASK	0xf
-
-	/*
-	 * The sequence is as follows:
-	 */
-	/* 1. Enable clock, enable CSR */
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
-	val |= XGENE_ENET_CLKEN_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
-
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
-	val &= ~XGENE_ENET_SRST_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
-
-	/* 2. Put CSR in reset, disable clock */
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
-	val |= XGENE_ENET_SRST_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
-
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
-	val &= ~XGENE_ENET_CLKEN_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
-
-	/* 3. Enable clock and enable CSR again */
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_CLKEN);
-	val |= XGENE_ENET_CLKEN_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_CLKEN, val);
-
-	val = ENET_CSR_READ32(pdata, XGENE_ENET_SRST);
-	val &= ~XGENE_ENET_SRST_MASK;
-	ENET_CSR_WRITE32(pdata, XGENE_ENET_SRST, val);
-
-#endif
 	xgene_enet_ecc_init(pdata);
 #endif
 	xgene_enet_config_ring_if_assoc(pdata);
@@ -693,7 +651,7 @@ static int xgene_enet_reset(struct xgene_enet_pdata *pdata)
 	return 0;
 }
 
-#if 0
+#if !defined(__FreeBSD__)
 static void xgene_gport_shutdown(struct xgene_enet_pdata *pdata)
 {
 	clk_disable_unprepare(pdata->clk);
@@ -887,7 +845,7 @@ struct xgene_mac_ops xgene_gmac_ops = {
 struct xgene_port_ops xgene_gport_ops = {
 	.reset = xgene_enet_reset,
 	.cle_bypass = xgene_enet_cle_bypass,
-#if 0
+#if !defined(__FreeBSD__)
 	.shutdown = xgene_gport_shutdown,
 #else
 	.shutdown = NULL,

@@ -22,21 +22,6 @@
 #ifndef __XGENE_ENET_MAIN_H__
 #define __XGENE_ENET_MAIN_H__
 
-#if 0
-#include <linux/acpi.h>
-#include <linux/clk.h>
-#include <linux/efi.h>
-#include <linux/io.h>
-#include <linux/of_platform.h>
-#include <linux/of_net.h>
-#include <linux/of_mdio.h>
-#include <linux/module.h>
-#include <net/ip.h>
-#include <linux/prefetch.h>
-#include <linux/if_vlan.h>
-#include <linux/phy.h>
-#endif
-
 #include "xgene_enet_hw.h"
 #include "xgene_enet_xgmac.h"
 
@@ -54,7 +39,7 @@
 
 /* software context of a descriptor ring */
 struct xgene_enet_desc_ring {
-	device_t ndev;			//struct net_device *ndev;
+	device_t ndev;
 	u16 id;
 	u16 num;
 	u16 head;
@@ -63,9 +48,8 @@ struct xgene_enet_desc_ring {
 	u16 irq;
 	u32 size;
 	u32 state[NUM_RING_CONFIG];
-	bus_space_handle_t cmd_base;	//void __iomem *cmd_base;
-	bus_space_handle_t cmd;		//void __iomem *cmd;
-//	dma_addr_t dma;
+	bus_space_handle_t cmd_base;
+	bus_space_handle_t cmd;
 	u16 dst_ring_num;
 	u8 nbufpool;
 
@@ -79,12 +63,9 @@ struct xgene_enet_desc_ring {
 		};
 	};
 
-//	struct sk_buff *(*rx_skb);
-//	struct sk_buff *(*cp_skb);
 	enum xgene_enet_ring_cfgsize cfgsize;
 	struct xgene_enet_desc_ring *cp_ring;
 	struct xgene_enet_desc_ring *buf_pool;
-//	struct napi_struct napi;
 	union {
 		void *desc_addr;
 		struct xgene_enet_raw_desc *raw_desc;
@@ -105,7 +86,6 @@ struct xgene_mac_ops {
 	void (*rx_disable)(struct xgene_enet_pdata *pdata);
 	void (*set_mac_addr)(struct xgene_enet_pdata *pdata);
 	void (*get_mac_addr)(struct xgene_enet_pdata *pdata, u8 *dev_addr);
-//	void (*link_state)(struct work_struct *work);
 };
 
 struct xgene_port_ops {
@@ -117,37 +97,28 @@ struct xgene_port_ops {
 
 /* ethernet private data */
 struct xgene_enet_pdata {
-	device_t ndev;		//struct net_device *ndev;
+	device_t ndev;
 	uint8_t *hwaddr;
-//	struct mii_bus *mdio_bus;
-//	struct phy_device *phy_dev;
 	int phy_speed;
-//	struct clk *clk;
-//	struct platform_device *pdev;
 	struct xgene_enet_desc_ring *tx_ring;
 	struct xgene_enet_desc_ring *rx_ring;
-//	char *dev_name;
 	u32 rx_buff_cnt;
 	u32 tx_qcnt_hi;
 	u32 cp_qcnt_hi;
 	u32 cp_qcnt_low;
-//	u32 rx_irq;
 	/* Those will serve as offsets for bus_read/write */
-	bus_space_handle_t eth_csr_addr;	//	void __iomem *eth_csr_addr;
-	bus_space_handle_t eth_ring_if_addr;	//	void __iomem *eth_ring_if_addr;
-	bus_space_handle_t eth_diag_csr_addr;	//	void __iomem *eth_diag_csr_addr;
-	bus_space_handle_t mcx_mac_addr;	//	void __iomem *mcx_mac_addr;
-	bus_space_handle_t mcx_mac_csr_addr;	//	void __iomem *mcx_mac_csr_addr;
+	bus_space_handle_t eth_csr_addr;
+	bus_space_handle_t eth_ring_if_addr;
+	bus_space_handle_t eth_diag_csr_addr;
+	bus_space_handle_t mcx_mac_addr;
+	bus_space_handle_t mcx_mac_csr_addr;
 	/* Here we store resources instead of pointers to memory */
-	struct resource *base_addr;		//	void __iomem *base_addr;
-	struct resource *ring_csr_addr;		//	void __iomem *ring_csr_addr;
-	struct resource *ring_cmd_addr;		//	void __iomem *ring_cmd_addr;
-//	int phy_mode;
+	struct resource *base_addr;
+	struct resource *ring_csr_addr;
+	struct resource *ring_cmd_addr;
 	enum xgene_enet_rm rm;
-//	struct rtnl_link_stats64 stats;
 	struct xgene_mac_ops *mac_ops;
 	struct xgene_port_ops *port_ops;
-//	struct delayed_work link_work;
 };
 
 struct xgene_indirect_ctl {
@@ -182,14 +153,6 @@ static inline u64 xgene_enet_get_field_value(int pos, int len, u64 src)
 #define GET_VAL(field, src) \
 		xgene_enet_get_field_value(field ## _POS, field ## _LEN, src)
 
-#if 0
-static inline struct device *ndev_to_dev(struct net_device *ndev)
-{
-	return ndev->dev.parent;
-}
-
-void xgene_enet_set_ethtool_ops(struct net_device *netdev);
-#endif
 int xgene_mii_phy_read(struct xgene_enet_pdata *pdata, u8 phy_id, u32 reg);
 int xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id, u32 reg, u16
     data);

@@ -418,9 +418,6 @@ xge_detach(device_t dev)
 		}
 	}
 
-	if (pdata->port_ops != NULL)
-		pdata->port_ops->shutdown(pdata);
-
 	/* Free software ring buffers if any */
 	if (sc->rx_mbufs != NULL)
 		buf_ring_free(sc->rx_mbufs, M_XGE);
@@ -625,7 +622,7 @@ xge_create_ring(struct xge_softc *sc, uint32_t ring_num, enum
 	    NULL, NULL,				/* filtfunc, filtfuncarg */
 	    size,				/* maxsize */
 	    XGE_RING_DESC_NSEGMENTS,		/* nsegments */
-	    (size / XGE_RING_DESC_NSEGMENTS),	/* maxsegsize */
+	    size,				/* maxsegsize */
 	    0,					/* flags */
 	    NULL, NULL,				/* lockfunc, lockfuncarg */
 	    &ring->dmat);			/* dmat */
@@ -739,15 +736,28 @@ dmatag_fail:
 	return (err);
 }
 
-static void
+static int
 xge_delete_dmaps(struct xgene_enet_desc_ring *ring)
 {
+	int err;
 	size_t i;
 
-	for (i = 0; ring->buff[i].dmap != NULL; i++)
-		bus_dmamap_destroy(ring->buf_dmat, ring->buff[i].dmap);
+	for (i = 0; ring->buff[i].dmap != NULL; i++) {
+		err = bus_dmamap_destroy(ring->buf_dmat, ring->buff[i].dmap);
+		if (err != 0) {
+			/*
+			 * Deletion of DMA tag when DMA map is busy may cause
+			 * random panic later.
+			 */
+			KASSERT(0, ("%s: Could not destroy DMA map for ring",
+			    __func__));
+			return (err);
+		}
+	}
 
-	bus_dma_tag_destroy(ring->buf_dmat);
+	err = bus_dma_tag_destroy(ring->buf_dmat);
+
+	return (err);
 }
 
 static int
@@ -862,6 +872,7 @@ xge_refill_bufpool_locked(struct xgene_enet_desc_ring *buf_pool, uint32_t nbuf)
 
 		tail = (tail + 1) & slots;
 	}
+	wmb();
 
 	RING_CMD_WRITE32(&sc->pdata, buf_pool->cmd, nbuf);
 	buf_pool->tail = tail;
@@ -991,7 +1002,10 @@ xge_delete_desc_rings(struct xge_softc *sc)
 	pdata = &sc->pdata;
 
 	if (pdata->tx_ring != NULL) {
-		xge_delete_dmaps(pdata->tx_ring);
+		if (xge_delete_dmaps(pdata->tx_ring) != 0) {
+			device_printf(sc->dev,
+			    "Could not delete DMA maps for Tx ring (busy)\n");
+		}
 		xge_delete_ring(pdata->tx_ring);
 		pdata->tx_ring = NULL;
 	}
@@ -1002,7 +1016,10 @@ xge_delete_desc_rings(struct xge_softc *sc)
 		/* XXX: Not yet */
 		xge_delete_bufpool(buf_pool);
 #endif
-		xge_delete_dmaps(buf_pool);
+		if (xge_delete_dmaps(buf_pool) != 0) {
+			device_printf(sc->dev,
+			    "Could not delete DMA maps for bufpool (busy)\n");
+		}
 		xge_delete_ring(buf_pool);
 		xge_delete_ring(pdata->rx_ring);
 		pdata->rx_ring = NULL;
@@ -1351,6 +1368,7 @@ xge_setup_tx_desc(struct xgene_enet_desc_ring *tx_ring, struct mbuf *mb)
 	tx_ring->cp_ring->cp_buff[tail].mbuf = mb;
 	tx_ring->cp_ring->cp_buff[tail].dmap = dmap;
 	tx_ring->cp_ring->cp_buff[tail].dmat = dmat;
+	wmb();
 
 #ifdef XGE_DEBUG
 	size_t i;

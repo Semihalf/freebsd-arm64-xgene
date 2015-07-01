@@ -34,6 +34,8 @@
 #include "xgene_enet_main.h"
 #include "xgene_enet_sgmac.h"
 
+#define	XGE_DEVSTR	"APM X-Gene Ethernet Controller"
+
 DECLARE_CLASS(xge_driver);
 
 #define	ENET_CSR_WRITE32(pdata, off, val)		\

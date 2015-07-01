@@ -1753,27 +1753,17 @@ xge_miibus_statchg(device_t dev)
 }
 
 static int
-xge_gmac_media_change_locked(struct xge_softc *sc)
-{
-	struct mii_data *mii_sc;
-
-	XGE_GLOBAL_LOCK_ASSERT(sc);
-
-	mii_sc = device_get_softc(sc->miibus);
-
-	return (mii_mediachg(mii_sc));
-}
-
-static int
 xge_gmac_media_change(struct ifnet *ifp)
 {
 	struct xge_softc *sc;
+	struct mii_data *mii_sc;
 	int err;
 
 	sc = ifp->if_softc;
+	mii_sc = device_get_softc(sc->miibus);
 
 	XGE_GLOBAL_LOCK(sc);
-	err = xge_gmac_media_change_locked(sc);
+	err = mii_mediachg(mii_sc);
 	XGE_GLOBAL_UNLOCK(sc);
 
 	return (err);

@@ -70,8 +70,6 @@ __FBSDID("$FreeBSD$");
 #define	XGE_DEBUG
 #undef	XGE_DEBUG
 
-#define	XGE_DEVSTR	"APM X-Gene Ethernet Controller"
-
 static void xge_fdt_get_macaddr(device_t);
 
 static int xge_fdt_probe(device_t);
@@ -166,7 +164,7 @@ xge_fdt_attach(device_t dev)
 		sc->portid = portid;
 
 
-#ifdef DEBUG
+#ifdef XGE_DEBUG
 	printf("\tPHY connection type: %s\n",
 	    (sc->phy_conn_type == PHY_CONN_RGMII) ?
 	    PHY_CONN_RGMII_STR : PHY_CONN_UNKNOWN_STR);

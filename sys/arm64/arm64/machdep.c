@@ -106,6 +106,14 @@ int64_t dcache_line_size;	/* The minimum D cache line size */
 int64_t icache_line_size;	/* The minimum I cache line size */
 int64_t idcache_line_size;	/* The minimum cache line size */
 
+#define APM_RESERVED_REGION_WA	1
+
+#ifdef APM_RESERVED_REGION_WA
+/* Reserved region with secondary core release addresses */
+#define APM_RESERVED_REGION_LOWADDR	0x4000000000
+#define APM_RESERVED_REGION_HIGHADDR	0x4000010000
+#endif
+
 static void
 cpu_startup(void *dummy)
 {
@@ -814,6 +822,51 @@ cache_setup(void)
 	idcache_line_size = MIN(dcache_line_size, icache_line_size);
 }
 
+#ifdef APM_RESERVED_REGION_WA
+/* ARM64TODO: Support all cases of reserved region placement */
+static void
+exclude_physmap_region(vm_paddr_t *physmap, u_int *physmap_idxp, vm_paddr_t
+    excl_low, vm_paddr_t excl_high)
+{
+	u_int i, _physmap_idx, memregion_idx;
+
+	_physmap_idx = *physmap_idxp;
+
+	/* Find mem region which needs to be truncated */
+	for (i = 0; i <= _physmap_idx; i += 2) {
+		if (excl_high <= physmap[i + 1]) {
+			if (excl_low >= physmap[i]) {
+				memregion_idx = i;
+				break;
+			}
+			else
+				panic("Overlapping reserved region\n");
+		}
+	}
+
+	/* Do nothing if reserved region is not part of any mem region */
+	if (i >= _physmap_idx) {
+		if (bootverbose)
+			printf("Reserved region not part of any mem region\n");
+		return;
+	}
+
+	/* Truncate mem region to exclude reserved range */
+	if (physmap[memregion_idx] == excl_low) {
+		if (physmap[memregion_idx + 1] == excl_high)
+			panic("Reserving entire mem region is not supported\n");
+		physmap[memregion_idx] = excl_high;
+	}
+	else if (physmap[memregion_idx + 1] == excl_high) {
+		physmap[memregion_idx + 1] = excl_low;
+	}
+	else {
+		/* Unsupported case */
+		panic("Reserved region not aligned to any end of mem region\n");
+	}
+}
+#endif
+
 void
 initarm(struct arm64_bootparams *abp)
 {
@@ -850,6 +903,10 @@ initarm(struct arm64_bootparams *abp)
 	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
 	add_efi_map_entries(efihdr, physmap, &physmap_idx);
 
+#ifdef APM_RESERVED_REGION_WA
+	exclude_physmap_region(physmap, &physmap_idx,
+	    APM_RESERVED_REGION_LOWADDR, APM_RESERVED_REGION_HIGHADDR);
+#endif
 	/* Print the memory map */
 	mem_len = 0;
 	for (i = 0; i < physmap_idx; i += 2) {

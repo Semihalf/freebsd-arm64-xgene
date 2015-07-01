@@ -1698,8 +1698,10 @@ xge_miibus_readreg(device_t dev, int phy, int reg)
 {
 	struct xge_softc *sc = device_get_softc(dev);
 	struct xgene_enet_pdata *pdata = &sc->pdata;
+	int ret;
 
-	return (xgene_mii_phy_read(pdata, phy, reg));
+	ret = xgene_mii_phy_read(pdata, phy, reg);
+	return ((ret < 0) ? 0 : ret);
 }
 
 int
@@ -1707,8 +1709,11 @@ xge_miibus_writereg(device_t dev, int phy, int reg, int val)
 {
 	struct xge_softc *sc = device_get_softc(dev);
 	struct xgene_enet_pdata *pdata = &sc->pdata;
+	int ret;
 
-	return (xgene_mii_phy_write(pdata, phy, reg, val));
+	ret = xgene_mii_phy_write(pdata, phy, reg, val);
+
+	return ((ret < 0) ? -ret : 0);
 }
 
 void

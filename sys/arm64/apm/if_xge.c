@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include "if_xge_var.h"
+#include "miibus_if.h"
 
 /* Extremely verbose output! Use for low level debugging only. */
 #define	XGE_DEBUG
@@ -117,6 +118,10 @@ extern int xgene_mii_phy_read(struct xgene_enet_pdata *, uint8_t, uint32_t);
 extern int xgene_mii_phy_write(struct xgene_enet_pdata *, uint8_t, uint32_t,
     uint16_t);
 
+static int xge_miibus_readreg(device_t, int, int);
+static int xge_miibus_writereg(device_t, int, int, int);
+static void xge_miibus_statchg(device_t);
+
 static int xge_sgmac_media_change(struct ifnet *);
 static void xge_sgmac_media_status(struct ifnet *, struct ifmediareq *);
 
@@ -149,11 +154,20 @@ static device_method_t xge_methods[] = {
 	DEVMETHOD(device_detach,	xge_detach),
 	DEVMETHOD(device_shutdown,	xge_shutdown),
 
+	/* MII interface */
+	DEVMETHOD(miibus_readreg,	xge_miibus_readreg),
+	DEVMETHOD(miibus_writereg,	xge_miibus_writereg),
+	DEVMETHOD(miibus_statchg,	xge_miibus_statchg),
+
 	/* End */
 	DEVMETHOD_END
 };
 
 DEFINE_CLASS_0(xge, xge_driver, xge_methods, sizeof(struct xge_softc));
+
+DRIVER_MODULE(miibus, xge, miibus_driver, miibus_devclass, 0, 0);
+MODULE_DEPEND(xge, ether, 1, 1, 1);
+MODULE_DEPEND(xge, miibus, 1, 1, 1);
 
 /*****************************************************************************
  ***************************** Device methods ********************************
@@ -1693,7 +1707,7 @@ out:
 /*****************************************************************************
  ****************************** MII interface ********************************
  *****************************************************************************/
-int
+static int
 xge_miibus_readreg(device_t dev, int phy, int reg)
 {
 	struct xge_softc *sc = device_get_softc(dev);
@@ -1704,7 +1718,7 @@ xge_miibus_readreg(device_t dev, int phy, int reg)
 	return ((ret < 0) ? 0 : ret);
 }
 
-int
+static int
 xge_miibus_writereg(device_t dev, int phy, int reg, int val)
 {
 	struct xge_softc *sc = device_get_softc(dev);
@@ -1716,7 +1730,7 @@ xge_miibus_writereg(device_t dev, int phy, int reg, int val)
 	return ((ret < 0) ? -ret : 0);
 }
 
-void
+static void
 xge_miibus_statchg(device_t dev)
 {
 	struct xge_softc *sc;

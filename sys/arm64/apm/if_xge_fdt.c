@@ -66,7 +66,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include "if_xge_var.h"
-#include "miibus_if.h"
 
 #define	XGE_DEBUG
 #undef	XGE_DEBUG
@@ -83,11 +82,6 @@ static device_method_t xge_fdt_methods[] = {
 	DEVMETHOD(device_probe,		xge_fdt_probe),
 	DEVMETHOD(device_attach,	xge_fdt_attach),
 
-	/* MII interface */
-	DEVMETHOD(miibus_readreg,	xge_miibus_readreg),
-	DEVMETHOD(miibus_writereg,	xge_miibus_writereg),
-	DEVMETHOD(miibus_statchg,	xge_miibus_statchg),
-
 	/* End */
 	DEVMETHOD_END
 };
@@ -98,9 +92,6 @@ DEFINE_CLASS_1(xge, xge_fdt_driver, xge_fdt_methods, sizeof(struct xge_softc),
 static devclass_t xge_fdt_devclass;
 
 DRIVER_MODULE(xge, simplebus, xge_fdt_driver, xge_fdt_devclass, 0, 0);
-DRIVER_MODULE(miibus, xge, miibus_driver, miibus_devclass, 0, 0);
-MODULE_DEPEND(xge, ether, 1, 1, 1);
-MODULE_DEPEND(xge, miibus, 1, 1, 1);
 
 static int
 xge_fdt_probe(device_t dev)

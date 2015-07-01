@@ -110,8 +110,4 @@ struct xge_softc {
 
 int xge_attach(device_t);
 
-int xge_miibus_readreg(device_t dev, int, int);
-int xge_miibus_writereg(device_t dev, int, int, int);
-void xge_miibus_statchg(device_t dev);
-
 #endif /* !__IF_XGE_VAR_H__ */

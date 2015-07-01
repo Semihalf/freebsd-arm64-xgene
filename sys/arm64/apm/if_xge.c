@@ -1735,8 +1735,12 @@ xge_miibus_statchg(device_t dev)
 {
 	struct xge_softc *sc;
 	struct mii_data *mii;
+	struct xgene_enet_pdata *pdata;
+	struct xgene_mac_ops *mac_ops;
 
 	sc = device_get_softc(dev);
+	pdata = &sc->pdata;
+	mac_ops = pdata->mac_ops;
 
 	/*
 	 * This routine is called as a result of
@@ -1748,8 +1752,32 @@ xge_miibus_statchg(device_t dev)
 
 	if ((mii->mii_media_status & IFM_ACTIVE) != 0)
 		sc->link_is_up = TRUE;
-	else
+	else {
 		sc->link_is_up = FALSE;
+		mac_ops->rx_disable(pdata);
+		mac_ops->tx_disable(pdata);
+		return;
+	}
+
+	/* If we got here it means that link is up */
+	switch (IFM_SUBTYPE(mii->mii_media_active)) {
+	case IFM_1000_T:
+		pdata->phy_speed = SPEED_1000;
+		break;
+	case IFM_100_TX:
+		pdata->phy_speed = SPEED_100;
+		break;
+	case IFM_10_T:
+		pdata->phy_speed = SPEED_10;
+		break;
+	default:
+		pdata->phy_speed = SPEED_UNKNOWN;
+		break;
+	}
+
+	mac_ops->init(pdata);
+	mac_ops->rx_enable(pdata);
+	mac_ops->tx_enable(pdata);
 }
 
 static int

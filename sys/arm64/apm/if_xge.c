@@ -1987,7 +1987,6 @@ xge_init_hw(struct xge_softc *sc)
 
 	dst_ring_num = xge_dst_ring_num(pdata->rx_ring);
 	pdata->port_ops->cle_bypass(pdata, dst_ring_num, buf_pool->id);
-	pdata->mac_ops->init(pdata);
 
 	return (0);
 error:

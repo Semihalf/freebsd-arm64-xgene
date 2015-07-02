@@ -246,7 +246,7 @@ static void xgene_sgmac_get_mac_addr(struct xgene_enet_pdata *pdata, u8 *dev_add
 	dev_addr[5] = (addr1 >> 24);
 }
 
-u32 xgene_enet_link_status(struct xgene_enet_pdata *p)
+static u32 xgene_enet_link_status(struct xgene_enet_pdata *p)
 {
 	u32 data;
 
@@ -428,6 +428,8 @@ struct xgene_mac_ops xgene_sgmac_ops = {
 	.get_mac_addr	= xgene_sgmac_get_mac_addr,
 #if !defined(__FreeBSD__)
 	.link_state	= xgene_enet_link_state
+#else
+	.link_state	= xgene_enet_link_status
 #endif
 };
 

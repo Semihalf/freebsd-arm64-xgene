@@ -99,7 +99,8 @@ xge_fdt_probe(device_t dev)
 		return (ENXIO);
 
 	if (!ofw_bus_is_compatible(dev, "apm,xgene-enet") &&
-	    !ofw_bus_is_compatible(dev, "apm,xgene1-sgenet"))
+	    !ofw_bus_is_compatible(dev, "apm,xgene1-sgenet") &&
+	    !ofw_bus_is_compatible(dev, "apm,xgene1-xgenet"))
 		return (ENXIO);
 
 	device_set_desc(dev, XGE_DEVSTR);
@@ -134,6 +135,10 @@ xge_fdt_attach(device_t dev)
 		    sizeof((char)PHY_CONN_SGMII_STR)) == 0) {
 			/* SGMII connection */
 			sc->phy_conn_type = PHY_CONN_SGMII;
+		} else if (strncasecmp(phy_conn_type, PHY_CONN_XGMII_STR,
+		    sizeof((char)PHY_CONN_XGMII_STR)) == 0) {
+			/* XGMII connection */
+			sc->phy_conn_type = PHY_CONN_XGMII;
 		}
 	}
 

@@ -877,6 +877,22 @@
 			phy-connection-type = "sgmii";
 		};
 
+		xgenet: ethernet@1f610000 {
+			compatible = "apm,xgene1-xgenet";
+			status = "disabled";
+			reg = <0x0 0x1f610000 0x0 0xd100>,
+			      <0x0 0x1f600000 0x0 0Xc300>,
+			      <0x0 0x18000000 0x0 0X200>;
+			reg-names = "enet_csr", "ring_csr", "ring_cmd";
+			interrupts = <0x0 0x60 0x4>,
+				     <0x0 0x61 0x4>;
+			dma-coherent;
+			clocks = <&xge0clk 0>;
+			/* mac address will be overwritten by the bootloader */
+			local-mac-address = [00 00 00 00 00 00];
+			phy-connection-type = "xgmii";
+		};
+
 		crypto: crypto@1f250000 {
 			device_type = "crypto";
 			compatible = "apm,xgene-crypto";

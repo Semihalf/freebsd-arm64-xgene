@@ -60,6 +60,7 @@ enum phy_conn_type {
 	PHY_CONN_UNKNOWN,
 	PHY_CONN_RGMII,
 	PHY_CONN_SGMII,
+	PHY_CONN_XGMII,
 };
 
 #define	PORT_ID_INVALID		(-1)
@@ -68,6 +69,7 @@ enum phy_conn_type {
 #define	PHY_CONN_UNKNOWN_STR	"Unknown"
 #define	PHY_CONN_RGMII_STR	"RGMII"
 #define	PHY_CONN_SGMII_STR	"SGMII"
+#define	PHY_CONN_XGMII_STR	"XGMII"
 
 struct xge_buff {
 	bus_dma_tag_t		dmat;

@@ -86,6 +86,11 @@ struct xgene_mac_ops {
 	void (*rx_disable)(struct xgene_enet_pdata *pdata);
 	void (*set_mac_addr)(struct xgene_enet_pdata *pdata);
 	void (*get_mac_addr)(struct xgene_enet_pdata *pdata, u8 *dev_addr);
+#if !defined(__FreeBSD__)
+	void (*link_state)(struct work_struct *work);
+#else
+	u32 (*link_state)(struct xgene_enet_pdata *pdata);
+#endif
 };
 
 struct xgene_port_ops {
@@ -153,7 +158,5 @@ static inline u64 xgene_enet_get_field_value(int pos, int len, u64 src)
 
 #define GET_VAL(field, src) \
 		xgene_enet_get_field_value(field ## _POS, field ## _LEN, src)
-
-u32 xgene_enet_link_status(struct xgene_enet_pdata *);
 
 #endif /* __XGENE_ENET_MAIN_H__ */

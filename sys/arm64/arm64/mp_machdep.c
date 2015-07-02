@@ -328,6 +328,8 @@ init_secondary(uint64_t cpu)
 	uint64_t mpidr;
 	int i;
 
+	DELAY(cpu * 500);
+
 	pcpup = &__pcpu[cpu];
 	/*
 	 * Set the pcpu pointer with a backup in tpidr_el1 to be

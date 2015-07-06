@@ -65,11 +65,10 @@ options 	MAC			# TrustedBSD MAC Framework
 options 	KDTRACE_FRAME		# Ensure frames are compiled in
 options 	KDTRACE_HOOKS		# Kernel DTrace hooks
 options 	VFP			# Floating-point support
-
-options		SMP
+options		SMP			# Symmetric MultiProcessing support
 
 # Mount root from USB stick partition da0s2a by default
-options 	ROOTDEVNAME=\"ufs:da0s2a\"
+options 	ROOTDEVNAME=\"ufs:da0\"
 
 # Debugging support.
 options 	KDB			# Enable kernel debugger support.

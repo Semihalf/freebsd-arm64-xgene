@@ -141,7 +141,7 @@ vfp_restore_state(void)
 
 	vfp_enable();
 
-	if (PCPU_GET(fpcurthread) != curthread && cpu != curpcb->pcb_vfpcpu) {
+	if ((PCPU_GET(fpcurthread) != curthread) || (cpu != curpcb->pcb_vfpcpu)) {
 
 		vfp_state = curthread->td_pcb->pcb_vfp;
 		fpcr = curthread->td_pcb->pcb_fpcr;

@@ -149,15 +149,17 @@ xge_fdt_attach(device_t dev)
 	}
 
 	/* Get phy address from FDT */
-	if (OF_getencprop(node, "phy-handle", &phy, sizeof(phy)) <= 0) {
-		device_printf(dev, "PHY not found in device tree\n");
-		sc->phyaddr = MII_PHY_ANY;
-	} else {
-		phy = OF_node_from_xref(phy);
-		if (OF_getencprop(phy,
-		    "reg", &sc->phyaddr, sizeof(sc->phyaddr)) <= 0) {
-			device_printf(dev, "Cannot retrieve PHY address\n");
+	if (sc->phy_conn_type == PHY_CONN_RGMII) {
+		if (OF_getencprop(node, "phy-handle", &phy, sizeof(phy)) <= 0) {
+			device_printf(dev, "PHY not found in device tree\n");
 			sc->phyaddr = MII_PHY_ANY;
+		} else {
+			phy = OF_node_from_xref(phy);
+			if (OF_getencprop(phy,
+			    "reg", &sc->phyaddr, sizeof(sc->phyaddr)) <= 0) {
+				device_printf(dev, "Cannot retrieve PHY address\n");
+				sc->phyaddr = MII_PHY_ANY;
+			}
 		}
 	}
 

@@ -62,319 +62,10 @@ __FBSDID("$FreeBSD$");
 #include <dev/fdt/fdt_common.h>
 
 #include "pcib_if.h"
+#include "xgene_pcie_var.h"
 
 #define	XGENE_PCIE_DEBUG
 #undef XGENE_PCIE_DEBUG
-
-#define	XGENE_PCIE_RESOURCE_TYPE	0x8
-#define	XGENE_PCIE_ROOT_CMPLX_CLASS	0x060400
-#define	XGENE_PCIE_ENDPOINT_CLASS	0x118000
-
-#define	XGENE_PCIECORE_CTLANDSTATUS	0x50
-#define	XGENE_PIM1_1L			0x80
-#define	XGENE_IBAR2			0x98
-#define	XGENE_IR2MSK			0x9c
-#define	XGENE_PIM2_1L			0xa0
-#define	XGENE_IBAR3L			0xb4
-#define	XGENE_IR3MSKL			0xbc
-#define	XGENE_PIM3_1L			0xc4
-#define	XGENE_OMR1BARL			0x100
-#define	XGENE_OMR2BARL			0x118
-#define	XGENE_OMR3BARL			0x130
-#define	XGENE_CFGBARL			0x154
-#define	XGENE_CFGBARH			0x158
-#define	XGENE_CFGCTL			0x15C
-#define	XGENE_RTDID			0x160
-#define	XGENE_BRIDGE_CFG_0		0x2000
-#define	XGENE_BRIDGE_CFG_4		0x2010
-#define	XGENE_SRST			0xc000
-#define	XGENE_CLKEN			0xc008
-#define	XGENE_AXI_EP_CFG_ACCESS		0x10000
-#define	XGENE_EN_COHERENCY		0xF0000000
-
-#define	XGENE_EN_REG			0x00000001
-#define	XGENE_OB_LO_IO			0x00000002
-
-#define	XGENE_LINKUP_MASK		0x00000100
-
-#define	XGENE_PCIE_DEVICEID		0xE004
-#define	XGENE_PCIE_VENDORID		0x10E8
-
-#define	SIZE_1K				0x00000400
-#define	SIZE_1M				0x00100000
-#define	SIZE_16M			0x01000000
-#define	SIZE_128M			0x08000000
-#define	SIZE_1G				0x40000000
-#define	SIZE_1T				(SIZE_1G * 1024ULL)
-
-#define	XGENE_DMA_RANGES_COUNT		2
-
-/* Helpers for CSR space R/W access */
-#define xgene_pcie_csr_read(reg)					\
-	le32toh(bus_read_4(sc->res[XGENE_PCIE_CSR], (reg)))
-#define xgene_pcie_csr_write(reg, val)					\
-		bus_write_4(sc->res[XGENE_PCIE_CSR], (reg), htole32((val)))
-
-/* Helpers for CFG space R/W access */
-#define	xgene_pcie_cfg_read(reg)					\
-	le32toh(bus_read_4(sc->res[XGENE_PCIE_CFG], sc->offset + (reg)))
-#define	xgene_pcie_cfg_write(reg, val)					\
-	bus_write_4(sc->res[XGENE_PCIE_CFG], sc->offset + (reg), htole32((val)))
-
-#ifdef XGENE_PCIE_DEBUG
-#define printdbg(fmt, args...)		\
-do {					\
-	printf("%s(): ", __func__);	\
-	printf(fmt, ##args);		\
-} while (0)
-#else
-#define	printdbg(fmt, args...)
-#endif
-
-enum xgene_memory_regions {
-	XGENE_PCIE_CSR = 0,
-	XGENE_PCIE_CFG,
-	XGENE_PCIE_MEM_REGIONS, /* total number of memory regions */
-};
-
-struct range {
-	uint32_t	flags;
-	bus_addr_t	pci_addr;
-	bus_addr_t	cpu_addr;
-	uint64_t	size;
-};
-
-struct dma_ranges {
-	struct range dma[XGENE_DMA_RANGES_COUNT];
-};
-
-struct pci_resources {
-	struct range		io;
-	struct range		mem;
-	struct dma_ranges	dma_ranges;
-	struct rman		io_rman;
-	struct rman		mem_rman;
-	bus_addr_t		io_alloc;
-	bus_addr_t		mem_alloc;
-};
-
-struct xgene_pcie_softc {
-	device_t		dev;
-	struct resource *	res[XGENE_PCIE_MEM_REGIONS];
-	struct pci_resources	pci_res;
-	bus_addr_t		offset;
-	int			busnr;
-	struct mtx		rw_mtx;
-	boolean_t		mtx_init;
-	u_int	irq_min;
-	u_int	irq_max;
-	u_int	irq_alloc;
-	struct ofw_bus_iinfo	pci_iinfo;
-};
-
-static struct resource_spec xgene_pcie_mem_spec[] = {
-	{ SYS_RES_MEMORY, XGENE_PCIE_CSR, RF_ACTIVE },
-	{ SYS_RES_MEMORY, XGENE_PCIE_CFG, RF_ACTIVE },
-	{ -1, 0, 0 }
-};
-
-/*
- * Forward prototypes
- */
-static int xgene_pcie_probe(device_t);
-static int xgene_pcie_attach(device_t);
-
-static uint32_t xgene_pcie_read_config(device_t, u_int, u_int, u_int, u_int,
-    int);
-static void xgene_pcie_write_config(device_t, u_int, u_int, u_int, u_int,
-    uint32_t, int);
-static int xgene_pcie_maxslots(device_t);
-static int xgene_pcie_read_ivar(device_t, device_t, int, uintptr_t *);
-static int xgene_pcie_write_ivar(device_t, device_t, int, uintptr_t);
-static struct resource *xgene_pcie_alloc_resource(device_t, device_t, int,
-    int *, u_long, u_long, u_long, u_int);
-static int xgene_pcie_release_resource(device_t, device_t, int, int,
-    struct resource *);
-static void xgene_pcie_init_irqs(struct xgene_pcie_softc*);
-static int xgene_pcie_setup(struct xgene_pcie_softc *);
-static int xgene_pcie_map_range(struct xgene_pcie_softc *, struct range *, int);
-static void xgene_pcie_setup_ib_reg(struct xgene_pcie_softc *, uint64_t,
-    uint64_t, uint64_t, boolean_t, uint8_t *);
-static uint64_t xgene_pcie_xlate_addr_pci_to_cpu(struct xgene_pcie_softc*,
-		bus_addr_t, int);
-static int xgene_pcib_init(struct xgene_pcie_softc *, int, int);
-static int xgene_pcib_init_bar(struct xgene_pcie_softc *, int, int, int, int);
-static void xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *);
-static int xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *);
-static int xgene_pcie_select_ib_region(uint8_t *, uint64_t);
-static void xgene_pcie_set_cfg_offset(struct xgene_pcie_softc *, u_int);
-static uint64_t xgene_pcie_set_ib_mask(struct xgene_pcie_softc *,
-    uint32_t, uint32_t, uint64_t);
-static void xgene_pcie_set_rtdid_reg(struct xgene_pcie_softc *,
-    u_int, u_int, u_int);
-static void xgene_pcie_setup_cfg_reg(struct xgene_pcie_softc *);
-static void xgene_pcie_setup_outbound_reg(struct xgene_pcie_softc *, uint32_t,
-    uint64_t, uint64_t, uint64_t, int);
-static void xgene_pcie_setup_pims(struct xgene_pcie_softc *, uint32_t,
-    uint64_t, uint64_t);
-static void xgene_pcie_write_vendor_device_ids(struct xgene_pcie_softc *);
-static void xgene_pcie_linkup_status(struct xgene_pcie_softc *);
-static boolean_t xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *,
-    u_int, u_int);
-static int xgene_pcie_route_interrupt(device_t, device_t, int);
-
-/*
- * Newbus interface declarations
- */
-static device_method_t xgene_pcie_methods[] = {
-	DEVMETHOD(device_probe,			xgene_pcie_probe),
-	DEVMETHOD(device_attach,		xgene_pcie_attach),
-
-	DEVMETHOD(pcib_maxslots,		xgene_pcie_maxslots),
-	DEVMETHOD(pcib_read_config,		xgene_pcie_read_config),
-	DEVMETHOD(pcib_write_config,		xgene_pcie_write_config),
-	DEVMETHOD(pcib_route_interrupt,		xgene_pcie_route_interrupt),
-
-	DEVMETHOD(bus_read_ivar,		xgene_pcie_read_ivar),
-	DEVMETHOD(bus_write_ivar,		xgene_pcie_write_ivar),
-	DEVMETHOD(bus_alloc_resource,		xgene_pcie_alloc_resource),
-	DEVMETHOD(bus_release_resource,		xgene_pcie_release_resource),
-
-	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
-	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
-	DEVMETHOD(bus_setup_intr,			bus_generic_setup_intr),
-	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
-
-	DEVMETHOD_END
-};
-
-static driver_t xgene_pcie_driver = {
-	"pcib",
-	xgene_pcie_methods,
-	sizeof(struct xgene_pcie_softc),
-};
-
-static devclass_t xgene_pcie_devclass;
-
-DRIVER_MODULE(pcib, ofwbus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
-DRIVER_MODULE(pcib, simplebus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
-
-static __inline uint32_t
-lower_32_bits(uint64_t val)
-{
-
-	return ((uint32_t)(val & 0xFFFFFFFF));
-}
-
-static __inline uint32_t
-higher_32_bits(uint64_t val)
-{
-
-	return ((uint32_t)(val >> 32));
-}
-/*
- * PCIe write/read configuration space
- */
-static __inline void
-xgene_pcie_cfg_w32(struct xgene_pcie_softc *sc, u_int reg, uint32_t val)
-{
-
-	xgene_pcie_cfg_write(reg, val);
-}
-
-static __inline void
-xgene_pcie_cfg_w16(struct xgene_pcie_softc *sc, u_int reg, uint16_t val)
-{
-	uint32_t val32 = xgene_pcie_cfg_read(reg & ~0x3);
-
-	switch (reg & 0x3)
-	{
-	case 2:
-		val32 &= ~0xFFFF0000;
-		val32 |= (uint32_t)val << 16;
-		break;
-	case 0:
-	default:
-		val32 &= ~0xFFFF;
-		val32 |= val;
-		break;
-	}
-	xgene_pcie_cfg_write(reg & ~0x3, val32);
-}
-
-static __inline void
-xgene_pcie_cfg_w8(struct xgene_pcie_softc *sc, u_int reg, uint8_t val)
-{
-	uint32_t val32 = xgene_pcie_cfg_read(reg & ~0x3);
-
-	switch (reg & 0x3)
-	{
-	case 0:
-		val32 &= ~0xFF;
-		val32 |= val;
-		break;
-	case 1:
-		val32 &= ~0xFF00;
-		val32 |= (uint32_t)val << 8;
-		break;
-	case 2:
-		val32 &= ~0xFF0000;
-		val32 |= (uint32_t)val << 16;
-		break;
-	case 3:
-	default:
-		val32 &= ~0xFF000000;
-		val32 |= (uint32_t)val << 24;
-		break;
-	}
-	xgene_pcie_cfg_write(reg & ~0x3, val32);
-}
-
-static __inline uint32_t
-xgene_pcie_cfg_r32(struct xgene_pcie_softc *sc, u_int reg)
-{
-	uint32_t retval = xgene_pcie_cfg_read(reg);
-
-	return (retval);
-}
-
-static __inline uint16_t
-xgene_pcie_cfg_r16(struct xgene_pcie_softc *sc, u_int reg)
-{
-	uint32_t val = xgene_pcie_cfg_read(reg & ~0x3);
-
-	switch (reg & 0x3) {
-	case 2:
-		val >>= 16;
-		break;
-	}
-
-	return((uint16_t)(val &= 0xFFFF));
-}
-
-static __inline uint8_t
-xgene_pcie_cfg_r8(struct xgene_pcie_softc *sc, u_int reg)
-{
-	uint32_t val = xgene_pcie_cfg_read(reg & ~0x3);
-
-	switch (reg & 0x3) {
-	case 3:
-		val >>= 24;
-		break;
-	case 2:
-		val >>= 16;
-		break;
-	case 1:
-		val >>= 8;
-		break;
-	}
-
-	return((uint8_t)(val &= 0xFF));
-}
-
-/*
- * APM Specific funcs
- */
 
 /*
  * For Configuration request, RTDID register is used as Bus Number,
@@ -432,7 +123,7 @@ xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *sc, u_int bus,
 	return (retval);
 }
 
-/* clear BAR configuration which was done by firmware */
+/* Clear BAR, PIM & POM configuration which was done by firmware */
 static void
 xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *sc)
 {
@@ -442,7 +133,7 @@ xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *sc)
 		xgene_pcie_csr_write(i, 0x0);
 }
 
-/* parse data from Device Tree and set memory windows */
+/* Parse data from Device Tree and set memory windows */
 static int
 xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *sc)
 {
@@ -457,7 +148,7 @@ xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *sc)
 
 	node = ofw_bus_get_node(sc->dev);
 
-	if (fdt_addrsize_cells(node, &pci_addr_cells, &size_cells))
+	if (fdt_addrsize_cells(node, &pci_addr_cells, &size_cells) != 0)
 			return (ENXIO);
 
 	parent_addr_cells = fdt_parent_addr_cells(node);
@@ -472,7 +163,7 @@ xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *sc)
 	 * Get 'ranges' property
 	 */
 	cells_count = OF_getprop_alloc(node, "ranges",
-	    sizeof(pcell_t), (void **)&ranges_buf);
+		sizeof(pcell_t), (void **)&ranges_buf);
 	if (cells_count == -1) {
 		device_printf(sc->dev, "ERROR: wrong FDT 'ranges' property\n");
 		return (ENXIO);
@@ -522,7 +213,7 @@ xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *sc)
 			    range->pci_addr);
 		}
 
-		if (xgene_pcie_map_range(sc, range, type)) {
+		if (xgene_pcie_map_range(sc, range, type) != 0) {
 			retval = ERANGE;
 			goto out;
 		}
@@ -649,7 +340,7 @@ xgene_pcib_init_bar(struct xgene_pcie_softc *sc, int bus, int slot, int func,
 		size &= ~0x3;
 		if ((size & 0xffff0000) == 0)
 			size |= 0xffff0000;
-	} else {			/* memory */
+	} else {					/* memory */
 		allocp = &sc->pci_res.mem_alloc;
 		/* clear bits 0-6 according to PCIe spec */
 		size &= ~0x7F;
@@ -768,11 +459,11 @@ xgene_pcib_init(struct xgene_pcie_softc *sc, int bus, int maxslot)
 			xgene_pcie_write_config(sc->dev, bus, slot, func,
 			    PCIR_PMBASEL_1, lower_32_bits(membase) >> 16, 2);
 			xgene_pcie_write_config(sc->dev, bus, slot, func,
-				PCIR_PMBASEH_1, higher_32_bits(membase), 4);
+			    PCIR_PMBASEH_1, higher_32_bits(membase), 4);
 
 			memlimit = membase + sc->pci_res.mem.size - 1;
 			xgene_pcie_write_config(sc->dev, bus, slot, func,
-				PCIR_PMLIMITL_1, lower_32_bits(memlimit) >> 16, 2);
+			    PCIR_PMLIMITL_1, lower_32_bits(memlimit) >> 16, 2);
 			xgene_pcie_write_config(sc->dev, bus, slot, func,
 			    PCIR_PMLIMITH_1, higher_32_bits(memlimit), 4);
 
@@ -926,9 +617,11 @@ xgene_pcie_setup_ib_reg(struct xgene_pcie_softc *sc, uint64_t cpu_addr,
 		break;
 	case 2:
 		xgene_pcie_csr_write(XGENE_IBAR3L, addr);
-		xgene_pcie_csr_write(XGENE_IBAR3L + 0x04, higher_32_bits(cpu_addr));
+		xgene_pcie_csr_write(XGENE_IBAR3L + 0x04, 
+					higher_32_bits(cpu_addr));
 		xgene_pcie_csr_write(XGENE_IR3MSKL, lower_32_bits(mask));
-		xgene_pcie_csr_write(XGENE_IR3MSKL + 0x04, higher_32_bits(mask));
+		xgene_pcie_csr_write(XGENE_IR3MSKL + 0x04, 
+					higher_32_bits(mask));
 		pim_addr = XGENE_PIM3_1L;
 		break;
 	}
@@ -1023,7 +716,7 @@ xgene_pcie_map_range(struct xgene_pcie_softc *sc, struct range *range, int type)
 	rm->rm_type = RMAN_ARRAY;
 	rm->rm_descr = descr;
 	err = rman_init(rm);
-	if (err) {
+	if (err != 0) {
 		device_printf(self,
 		    "ERROR: rman_init() for %s failed (err: %d)\n", descr, err);
 		return (err);
@@ -1032,7 +725,7 @@ xgene_pcie_map_range(struct xgene_pcie_softc *sc, struct range *range, int type)
 	start = range->cpu_addr;
 	end = range->cpu_addr + range->size -1;
 	err = rman_manage_region(rm, start, end);
-	if (err) {
+	if (err != 0) {
 		device_printf(self,
 		    "ERROR: rman_manage_region() for %s failed (err: %d)\n",
 		    descr, err);
@@ -1121,7 +814,7 @@ xgene_pcie_setup(struct xgene_pcie_softc *sc)
 
 	/* Parse FDT for memory windows */
 	err = xgene_pcie_parse_fdt_ranges(sc);
-	if (err) {
+	if (err != 0) {
 		device_printf(sc->dev,
 		    "ERROR: parsing FDT ranges failed (err: %d)\n", err);
 		return (ENXIO);
@@ -1164,7 +857,7 @@ xgene_pcie_attach(device_t self)
 	sc->busnr = 0;
 
 	err = bus_alloc_resources(self, xgene_pcie_mem_spec, sc->res);
-	if (err) {
+	if (err != 0) {
 		device_printf(self,
 		    "ERROR: cannot map resources memory (err: %d)\n", err);
 		return (ENXIO);
@@ -1196,7 +889,7 @@ xgene_pcie_attach(device_t self)
 
 	/* Set up X-Gene specific PCIe configuration */
 	err = xgene_pcie_setup(sc);
-	if (err) {
+	if (err != 0) {
 		/* release allocated resources */
 		bus_release_resources(self, xgene_pcie_mem_spec,
 							      sc->res);
@@ -1325,7 +1018,8 @@ xgene_pcie_write_ivar(device_t dev, device_t child, int index,
 }
 
 static uint64_t
-xgene_pcie_xlate_addr_pci_to_cpu(struct xgene_pcie_softc *sc, bus_addr_t bus_addr, int type)
+xgene_pcie_xlate_addr_pci_to_cpu(struct xgene_pcie_softc *sc, 
+    bus_addr_t bus_addr, int type)
 {
 	struct range *r;
 	uint64_t offset;
@@ -1375,10 +1069,12 @@ xgene_pcie_alloc_resource(device_t dev, device_t child, int type, int *rid,
 
 		if ((start == 0UL) && (end == ~0UL)) {
 			start = sc->pci_res.mem.cpu_addr;
-			end = sc->pci_res.mem.cpu_addr + sc->pci_res.mem.size - 1;
+			end = sc->pci_res.mem.cpu_addr + 
+				    sc->pci_res.mem.size - 1;
 			count = sc->pci_res.mem.size;
 		} else {
-			start = xgene_pcie_xlate_addr_pci_to_cpu(sc, start, type);
+			start = xgene_pcie_xlate_addr_pci_to_cpu(sc, 
+				    start, type);
 			end = start + count -1;
 		}
 		break;
@@ -1394,7 +1090,7 @@ xgene_pcie_alloc_resource(device_t dev, device_t child, int type, int *rid,
 			type, rid, start, end, count, flags));
 	};
 
-	printdbg("xlated to cpu addr: %#lx..%#lx\n", start, end);
+	printdbg("translated to cpu addr: %#lx..%#lx\n", start, end);
 
 	if (start == ~0ul)
 		return (NULL);
@@ -1428,3 +1124,40 @@ xgene_pcie_release_resource(device_t dev, device_t child,
 
 	return (rman_release_resource(res));
 }
+
+/*
+ * Newbus interface declarations
+ */
+static device_method_t xgene_pcie_methods[] = {
+	DEVMETHOD(device_probe,			xgene_pcie_probe),
+	DEVMETHOD(device_attach,		xgene_pcie_attach),
+
+	DEVMETHOD(pcib_maxslots,		xgene_pcie_maxslots),
+	DEVMETHOD(pcib_read_config,		xgene_pcie_read_config),
+	DEVMETHOD(pcib_write_config,		xgene_pcie_write_config),
+	DEVMETHOD(pcib_route_interrupt,		xgene_pcie_route_interrupt),
+
+	DEVMETHOD(bus_read_ivar,		xgene_pcie_read_ivar),
+	DEVMETHOD(bus_write_ivar,		xgene_pcie_write_ivar),
+	DEVMETHOD(bus_alloc_resource,		xgene_pcie_alloc_resource),
+	DEVMETHOD(bus_release_resource,		xgene_pcie_release_resource),
+
+	DEVMETHOD(bus_activate_resource,	bus_generic_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,	bus_generic_deactivate_resource),
+	DEVMETHOD(bus_setup_intr,		bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,		bus_generic_teardown_intr),
+
+	DEVMETHOD_END
+};
+
+static driver_t xgene_pcie_driver = {
+	"pcib",
+	xgene_pcie_methods,
+	sizeof(struct xgene_pcie_softc),
+};
+
+static devclass_t xgene_pcie_devclass;
+
+DRIVER_MODULE(pcib, ofwbus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
+DRIVER_MODULE(pcib, simplebus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
+

@@ -119,13 +119,14 @@ struct xgene_enet_pdata {
 	enum xgene_enet_rm rm;
 	struct xgene_mac_ops *mac_ops;
 	struct xgene_port_ops *port_ops;
+	u32 port_id;
 };
 
 struct xgene_indirect_ctl {
-	void __iomem *addr;
-	void __iomem *ctl;
-	void __iomem *cmd;
-	void __iomem *cmd_done;
+	bus_space_handle_t addr;
+	bus_space_handle_t ctl;
+	bus_space_handle_t cmd;
+	bus_space_handle_t cmd_done;
 };
 
 /* Set the specified value into a bit-field defined by its starting position
@@ -153,8 +154,6 @@ static inline u64 xgene_enet_get_field_value(int pos, int len, u64 src)
 #define GET_VAL(field, src) \
 		xgene_enet_get_field_value(field ## _POS, field ## _LEN, src)
 
-int xgene_mii_phy_read(struct xgene_enet_pdata *pdata, u8 phy_id, u32 reg);
-int xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id, u32 reg, u16
-    data);
+u32 xgene_enet_link_status(struct xgene_enet_pdata *);
 
 #endif /* __XGENE_ENET_MAIN_H__ */

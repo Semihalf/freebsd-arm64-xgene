@@ -66,12 +66,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus_subr.h>
 
 #include "if_xge_var.h"
-#include "miibus_if.h"
 
 #define	XGE_DEBUG
 #undef	XGE_DEBUG
-
-#define	XGE_DEVSTR	"APM X-Gene Ethernet Controller"
 
 static void xge_fdt_get_macaddr(device_t);
 
@@ -83,10 +80,6 @@ static device_method_t xge_fdt_methods[] = {
 	DEVMETHOD(device_probe,		xge_fdt_probe),
 	DEVMETHOD(device_attach,	xge_fdt_attach),
 
-	/* MII interface */
-	DEVMETHOD(miibus_readreg,	xge_miibus_readreg),
-	DEVMETHOD(miibus_writereg,	xge_miibus_writereg),
-
 	/* End */
 	DEVMETHOD_END
 };
@@ -97,9 +90,6 @@ DEFINE_CLASS_1(xge, xge_fdt_driver, xge_fdt_methods, sizeof(struct xge_softc),
 static devclass_t xge_fdt_devclass;
 
 DRIVER_MODULE(xge, simplebus, xge_fdt_driver, xge_fdt_devclass, 0, 0);
-DRIVER_MODULE(miibus, xge, miibus_driver, miibus_devclass, 0, 0);
-MODULE_DEPEND(xge, ether, 1, 1, 1);
-MODULE_DEPEND(xge, miibus, 1, 1, 1);
 
 static int
 xge_fdt_probe(device_t dev)
@@ -108,7 +98,8 @@ xge_fdt_probe(device_t dev)
 	if (!ofw_bus_status_okay(dev))
 		return (ENXIO);
 
-	if (!ofw_bus_is_compatible(dev, "apm,xgene-enet"))
+	if (!ofw_bus_is_compatible(dev, "apm,xgene-enet") &&
+	    !ofw_bus_is_compatible(dev, "apm,xgene1-sgenet"))
 		return (ENXIO);
 
 	device_set_desc(dev, XGE_DEVSTR);
@@ -120,7 +111,7 @@ xge_fdt_attach(device_t dev)
 {
 	struct xge_softc *sc;
 	phandle_t node;
-	phandle_t phy;
+	phandle_t phy, portid;
 	char phy_conn_type[16];
 
 	sc = device_get_softc(dev);
@@ -139,6 +130,10 @@ xge_fdt_attach(device_t dev)
 		    sizeof((char)PHY_CONN_RGMII_STR)) == 0) {
 			/* RGMII connection */
 			sc->phy_conn_type = PHY_CONN_RGMII;
+		} else if (strncasecmp(phy_conn_type, PHY_CONN_SGMII_STR,
+		    sizeof((char)PHY_CONN_SGMII_STR)) == 0) {
+			/* SGMII connection */
+			sc->phy_conn_type = PHY_CONN_SGMII;
 		}
 	}
 
@@ -161,7 +156,15 @@ xge_fdt_attach(device_t dev)
 		}
 	}
 
-#ifdef DEBUG
+	/* Get port id from FDT */
+	if (OF_getencprop(node, "port-id", &portid, sizeof(portid)) <= 0) {
+		/* Set invalid port-id */
+		sc->portid = PORT_ID_INVALID;
+	} else
+		sc->portid = portid;
+
+
+#ifdef XGE_DEBUG
 	printf("\tPHY connection type: %s\n",
 	    (sc->phy_conn_type == PHY_CONN_RGMII) ?
 	    PHY_CONN_RGMII_STR : PHY_CONN_UNKNOWN_STR);

@@ -86,8 +86,10 @@ typedef bus_addr_t	dma_addr_t;
 
 #define	BIT(n)			(1U << (n))
 
+#define	SPEED_UNKNOWN	(-1)
 #define	SPEED_10	10
 #define	SPEED_100	100
+#define	SPEED_1000	1000
 
 #define	netdev_priv(dev)				\
 ({							\

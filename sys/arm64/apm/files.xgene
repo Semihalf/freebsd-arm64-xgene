@@ -8,4 +8,5 @@ arm64/apm/xgene_xhci.c		optional	xhci fdt
 arm64/apm/if_xge_fdt.c          optional        xge fdt
 arm64/apm/if_xge.c              optional        xge
 arm64/apm/xgene_enet_hw.c       optional        xge
+arm64/apm/xgene_enet_sgmac.c	optional	xge
 

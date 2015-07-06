@@ -25,6 +25,9 @@
 #include "xgene_enet_main.h"
 #include "xgene_enet_hw.h"
 
+int xgene_mii_phy_read(struct xgene_enet_pdata *, u8, u32);
+int xgene_mii_phy_write(struct xgene_enet_pdata *, u8, u32, u16);
+
 static void xgene_enet_ring_init(struct xgene_enet_desc_ring *ring)
 {
 	u32 *ring_cfg = ring->state;
@@ -358,7 +361,7 @@ static void xgene_enet_rd_mcx_mac(struct xgene_enet_pdata *pdata,
 }
 
 int
-xgene_mii_phy_write(struct xgene_enet_pdata *pdata, int phy_id,
+xgene_mii_phy_write(struct xgene_enet_pdata *pdata, u8 phy_id,
 			       u32 reg, u16 data)
 {
 	u32 addr = 0, wr_data = 0;

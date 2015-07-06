@@ -185,6 +185,22 @@ xge_attach(device_t dev)
 
 	sc->dev = dev;
 
+	/*
+	 * Before doing anything check the connection type.
+	 * This will allow us to avoid sanity checks later
+	 * (if we pass this we can assume that the connection type is OK)
+	 */
+	switch (sc->phy_conn_type) {
+	case PHY_CONN_RGMII:
+	case PHY_CONN_SGMII:
+	case PHY_CONN_XGMII:
+		/* Those are valid types so continue to attach */
+		break;
+	default:
+		device_printf(dev, "Unknown or nnvalid connection type\n");
+		return (ENXIO);
+	}
+
 	/* Initialize global lock */
 	XGE_GLOBAL_LOCK_INIT(sc);
 	/* Initialize timeout */
@@ -393,10 +409,6 @@ xge_attach(device_t dev)
 		    0, NULL);
 
 		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_10G_SR | IFM_FDX));
-	} else {
-		device_printf(dev, "Unsupported connection type\n");
-		xge_detach(dev);
-		return (ENXIO);
 	}
 
 	ether_ifattach(ifp, sc->hwaddr);

@@ -102,6 +102,18 @@ __FBSDID("$FreeBSD$");
 #define	XGE_GLOBAL_LOCK_ASSERT(sc)					\
     mtx_assert(&(sc)->globl_mtx, MA_OWNED)
 
+#define	XGE_SGMAC_LOCK(sc)						\
+do {									\
+	if ((sc)->phy_conn_type == PHY_CONN_SGMII)			\
+		mtx_lock(&sgmac_mtx);					\
+} while (0)
+
+#define	XGE_SGMAC_UNLOCK(sc)						\
+do {									\
+	if ((sc)->phy_conn_type == PHY_CONN_SGMII)			\
+		mtx_unlock(&sgmac_mtx);					\
+} while (0)
+
 #define	XGE_RING_DESC_ALIGNMENT		256	/* Has to be 256 bytes */
 #define	XGE_RING_DESC_NSEGMENTS		1	/* Single segment */
 
@@ -171,6 +183,20 @@ DRIVER_MODULE(miibus, xge, miibus_driver, miibus_devclass, 0, 0);
 MODULE_DEPEND(xge, ether, 1, 1, 1);
 MODULE_DEPEND(xge, miibus, 1, 1, 1);
 
+/******************************************************************************
+ ************************* Early system initialization ************************
+ ******************************************************************************/
+static struct mtx sgmac_mtx;
+
+static void
+xge_early_init(void *dummy __unused)
+{
+
+	/* Lock to protect shared registers of SGMAC ports */
+	mtx_init(&sgmac_mtx, "XGE SGMAC lock", NULL, MTX_DEF);
+}
+SYSINIT(xge_early_init, SI_SUB_DRIVERS, SI_ORDER_FIRST, xge_early_init, NULL);
+
 /*****************************************************************************
  ***************************** Device methods ********************************
  *****************************************************************************/
@@ -179,6 +205,7 @@ xge_attach(device_t dev)
 {
 	struct xge_softc *sc = device_get_softc(dev);
 	struct xgene_enet_pdata *pdata = &sc->pdata;
+	bus_space_handle_t mac_offset;
 	struct ifnet *ifp;
 	int err;
 	int rid;
@@ -213,13 +240,16 @@ xge_attach(device_t dev)
 	 */
 	/* Ethernet control and status register address space */
 	rid = RES_ENET_CSR;
-	sc->enet_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->enet_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 	/* Descriptor ring control and status register address space */
 	rid = RES_RING_CSR;
-	sc->ring_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->ring_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 	/* Descriptor ring command register address space */
 	rid = RES_RING_CMD;
-	sc->ring_cmd = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->ring_cmd = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 
 	if (!sc->enet_csr || !sc->ring_csr || !sc->ring_cmd) {
 		device_printf(dev, "Could not allocate resource for %s\n",
@@ -251,6 +281,27 @@ xge_attach(device_t dev)
 		xge_detach(dev);
 		return (ENXIO);
 	}
+	/*
+	 * Acquire port ID for SGMII ports and set up mac_offset.
+	 *
+	 * Some of the ENET (SGMAC) registers' regions are shared
+	 * among different MAC instances. Each MAC has its registers
+	 * placed within a fixed offset from the MAC number 0.
+	 * mac_offset is used to take this into account and
+	 * HAS TO BE ZEROED for any other port (GMAC/XGMAC).
+	 */
+	if (sc->phy_conn_type == PHY_CONN_SGMII) {
+		if (sc->portid == PORT_ID_INVALID ||
+		    sc->portid > PORT_ID_MAX) {
+			device_printf(dev, "Invalid port-id specified\n");
+			return (ENXIO);
+		}
+		pdata->port_id = sc->portid;
+		mac_offset = (pdata->port_id * MAC_OFFSET);
+	} else {
+		pdata->port_id = 0;
+		mac_offset = 0;
+	}
 
 	/*
 	 * XXX: For Linux HW layer this was a reference to
@@ -268,22 +319,15 @@ xge_attach(device_t dev)
 	pdata->eth_csr_addr = BLOCK_ETH_CSR_OFFSET;
 	pdata->eth_ring_if_addr = BLOCK_ETH_RING_IF_OFFSET;
 	pdata->eth_diag_csr_addr = BLOCK_ETH_DIAG_CSR_OFFSET;
+
 	if (sc->phy_conn_type == PHY_CONN_RGMII ||
 	    sc->phy_conn_type == PHY_CONN_SGMII) {
-		pdata->mcx_mac_addr = BLOCK_ETH_MAC_OFFSET;
+		pdata->mcx_mac_addr = BLOCK_ETH_MAC_OFFSET + mac_offset;
 		pdata->mcx_mac_csr_addr = BLOCK_ETH_MAC_CSR_OFFSET;
 	} else {
+		/* No need to add mac_offset here since this is always XGMAC */
 		pdata->mcx_mac_addr = BLOCK_AXG_MAC_OFFSET;
 		pdata->mcx_mac_csr_addr = BLOCK_AXG_MAC_CSR_OFFSET;
-	}
-
-	if (sc->phy_conn_type == PHY_CONN_SGMII) {
-		if (sc->portid == PORT_ID_INVALID ||
-		    sc->portid > PORT_ID_MAX) {
-			device_printf(dev, "Invalid port-id specified\n");
-			return (ENXIO);
-		}
-		pdata->port_id = sc->portid;
 	}
 
 #ifdef XGE_DEBUG
@@ -615,7 +659,9 @@ xge_mac_reset(struct xge_softc *sc)
 {
 	struct xgene_enet_pdata *pdata = &sc->pdata;
 
+	XGE_SGMAC_LOCK(sc);
 	pdata->mac_ops->reset(pdata);
+	XGE_SGMAC_UNLOCK(sc);
 }
 
 /*****************************************************************************
@@ -1001,12 +1047,12 @@ xge_create_desc_rings(struct xge_softc *sc)
 	uint8_t cpu_bufnum, eth_bufnum, bp_bufnum;
 	int err = 0;
 
-	cpu_bufnum = 0;
-	eth_bufnum = START_ETH_BUFNUM;
-	bp_bufnum = START_BP_BUFNUM;
-	buf_pool = NULL;
+	cpu_bufnum = pdata->cpu_bufnum;
+	eth_bufnum = pdata->eth_bufnum;
+	bp_bufnum = pdata->bp_bufnum;
+	ring_num = pdata->ring_num;
 
-	ring_num = START_RING_NUM;
+	buf_pool = NULL;
 
 	/* Allocate Rx descriptor ring (work queue) */
 	ring_id = xge_get_ring_id(RING_OWNER_CPU, cpu_bufnum);
@@ -1870,7 +1916,10 @@ xge_sx_gmac_update_status_locked(struct ifnet *ifp)
 	if (link_is_up) {
 		if (!link_was_up) {
 			if_link_state_change(ifp, LINK_STATE_UP);
+			XGE_SGMAC_LOCK(sc);
 			mac_ops->init(pdata);
+			XGE_SGMAC_UNLOCK(sc);
+
 			mac_ops->rx_enable(pdata);
 			mac_ops->tx_enable(pdata);
 		}
@@ -2082,6 +2131,27 @@ xge_setup_ops(struct xge_softc *sc)
 		break;
 	default:
 		device_printf(sc->dev, "Unsupported connection type");
+		return (ENXIO);
+	}
+
+	switch (pdata->port_id) {
+	case 0:
+		pdata->cpu_bufnum = START_CPU_BUFNUM_0;
+		pdata->eth_bufnum = START_ETH_BUFNUM_0;
+		pdata->bp_bufnum = START_BP_BUFNUM_0;
+		pdata->ring_num = START_RING_NUM_0;
+		break;
+	case 1:
+		pdata->cpu_bufnum = START_CPU_BUFNUM_1;
+		pdata->eth_bufnum = START_ETH_BUFNUM_1;
+		pdata->bp_bufnum = START_BP_BUFNUM_1;
+		pdata->ring_num = START_RING_NUM_1;
+		break;
+	default:
+		device_printf(sc->dev, "Unsupported %s port ID: %d\n",
+		    (sc->phy_conn_type == PHY_CONN_RGMII) ? "RGMII" :
+		    (sc->phy_conn_type == PHY_CONN_SGMII) ? "SGMII" : "XGMII",
+		    pdata->port_id);
 		return (ENXIO);
 	}
 

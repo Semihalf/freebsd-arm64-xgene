@@ -495,6 +495,7 @@ static void xgene_gmac_init(struct xgene_enet_pdata *pdata)
 	xgene_enet_rd_mcx_mac(pdata, INTERFACE_CONTROL_ADDR, &intf_ctl);
 	xgene_enet_rd_csr(pdata, RGMII_REG_0_ADDR, &rgmii);
 
+	intf_ctl &= ~ENET_LGHD_MASK;
 	switch (pdata->phy_speed) {
 	case SPEED_10:
 		ENET_INTERFACE_MODE2_SET(&mc2, 1);

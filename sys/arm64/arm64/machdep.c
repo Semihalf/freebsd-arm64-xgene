@@ -106,14 +106,6 @@ int64_t dcache_line_size;	/* The minimum D cache line size */
 int64_t icache_line_size;	/* The minimum I cache line size */
 int64_t idcache_line_size;	/* The minimum cache line size */
 
-#define APM_RESERVED_REGION_WA	1
-
-#ifdef APM_RESERVED_REGION_WA
-/* Reserved region with secondary core release addresses */
-#define APM_RESERVED_REGION_LOWADDR	0x4000000000
-#define APM_RESERVED_REGION_HIGHADDR	0x4000010000
-#endif
-
 static void
 cpu_startup(void *dummy)
 {
@@ -822,7 +814,6 @@ cache_setup(void)
 	idcache_line_size = MIN(dcache_line_size, icache_line_size);
 }
 
-#ifdef APM_RESERVED_REGION_WA
 /* ARM64TODO: Support all cases of reserved region placement */
 static void
 exclude_physmap_region(vm_paddr_t *physmap, u_int *physmap_idxp, vm_paddr_t
@@ -865,17 +856,27 @@ exclude_physmap_region(vm_paddr_t *physmap, u_int *physmap_idxp, vm_paddr_t
 		panic("Reserved region not aligned to any end of mem region\n");
 	}
 }
-#endif
+
+static inline void
+exclude_reserved_regions(struct mem_region *mrptr, int mrcount)
+{
+	while (mrcount--) {
+		exclude_physmap_region(physmap, &physmap_idx, mrptr->mr_start,
+		    mrptr->mr_start + mrptr->mr_size);
+		++mrptr;
+	}
+}
 
 void
 initarm(struct arm64_bootparams *abp)
 {
+	struct mem_region mem_regions[FDT_MEM_REGIONS];
 	struct efi_map_header *efihdr;
 	struct pcpu *pcpup;
 	vm_offset_t lastaddr;
 	caddr_t kmdp;
 	vm_paddr_t mem_len;
-	int i;
+	int i, mem_regions_sz;
 
 	printf("In initarm on arm64\n");
 
@@ -903,10 +904,10 @@ initarm(struct arm64_bootparams *abp)
 	    MODINFO_METADATA | MODINFOMD_EFI_MAP);
 	add_efi_map_entries(efihdr, physmap, &physmap_idx);
 
-#ifdef APM_RESERVED_REGION_WA
-	exclude_physmap_region(physmap, &physmap_idx,
-	    APM_RESERVED_REGION_LOWADDR, APM_RESERVED_REGION_HIGHADDR);
-#endif
+	/* Grab reserved memory regions information from device tree. */
+	if (fdt_get_reserved_regions(mem_regions, &mem_regions_sz) == 0)
+		exclude_reserved_regions(mem_regions, mem_regions_sz);
+
 	/* Print the memory map */
 	mem_len = 0;
 	for (i = 0; i < physmap_idx; i += 2) {

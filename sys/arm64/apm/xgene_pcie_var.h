@@ -99,6 +99,8 @@ do {					\
 #define	printdbg(fmt, args...)
 #endif
 
+DECLARE_CLASS(xgene_pcie_driver);
+
 enum xgene_memory_regions {
 	XGENE_PCIE_CSR = 0,
 	XGENE_PCIE_CFG,
@@ -149,9 +151,7 @@ static struct resource_spec xgene_pcie_mem_spec[] = {
 /*
  * Forward prototypes
  */
-static int xgene_pcie_probe(device_t);
-static int xgene_pcie_attach(device_t);
-
+int xgene_pcie_attach(device_t);
 static uint32_t xgene_pcie_read_config(device_t, u_int, u_int, u_int, u_int,
     int);
 static void xgene_pcie_write_config(device_t, u_int, u_int, u_int, u_int,
@@ -173,7 +173,7 @@ static uint64_t xgene_pcie_xlate_addr_pci_to_cpu(struct xgene_pcie_softc*,
 static int xgene_pcib_init(struct xgene_pcie_softc *, int, int);
 static int xgene_pcib_init_bar(struct xgene_pcie_softc *, int, int, int, int);
 static void xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *);
-static int xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *);
+static int xgene_pcie_setup_memory_windows(struct xgene_pcie_softc *);
 static int xgene_pcie_select_ib_region(uint8_t *, uint64_t);
 static void xgene_pcie_set_cfg_offset(struct xgene_pcie_softc *, u_int);
 static uint64_t xgene_pcie_set_ib_mask(struct xgene_pcie_softc *,

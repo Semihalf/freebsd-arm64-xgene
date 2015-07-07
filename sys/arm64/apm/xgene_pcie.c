@@ -135,149 +135,33 @@ xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *sc)
 
 /* Parse data from Device Tree and set memory windows */
 static int
-xgene_pcie_parse_fdt_ranges(struct xgene_pcie_softc *sc)
+xgene_pcie_setup_memory_windows(struct xgene_pcie_softc *sc)
 {
-	u_int retval = 0;
 	uint8_t ib_reg_mask = 0;
-	uint32_t flags;
-	phandle_t node;
-	pcell_t pci_addr_cells, parent_addr_cells, size_cells;
-	pcell_t *ranges_buf, *cell_ptr;
-	int cells_count, tuples_count, touple, i, type;
 	struct range *range;
+	int retval;
 
-	node = ofw_bus_get_node(sc->dev);
+	/* setup memory window */
+	range = &sc->pci_res.mem;
+	retval = xgene_pcie_map_range(sc, range, SYS_RES_MEMORY);
+	if (retval != 0)
+		goto err;
 
-	if (fdt_addrsize_cells(node, &pci_addr_cells, &size_cells) != 0)
-			return (ENXIO);
+	/* setup IO window */
+	range = &sc->pci_res.io;
+	retval = xgene_pcie_map_range(sc, range, SYS_RES_IOPORT);
+	if (retval != 0)
+		goto err;
 
-	parent_addr_cells = fdt_parent_addr_cells(node);
-
-	if (parent_addr_cells != 2 || pci_addr_cells != 3 || size_cells != 2) {
-		device_printf(sc->dev, "ERROR: "
-		    "unexpected values of address or size cells in FDT\n");
-		return (ENXIO);
-	}
-
-	/*
-	 * Get 'ranges' property
-	 */
-	cells_count = OF_getprop_alloc(node, "ranges",
-		sizeof(pcell_t), (void **)&ranges_buf);
-	if (cells_count == -1) {
-		device_printf(sc->dev, "ERROR: wrong FDT 'ranges' property\n");
-		return (ENXIO);
-	}
-
-	tuples_count = cells_count /
-		    (pci_addr_cells + parent_addr_cells + size_cells);
-	if (tuples_count != 2) {
-		device_printf(sc->dev,
-			"ERROR: unexpected number of 'ranges' tuples in FDT\n");
-		retval = ENXIO;
-		goto out;
-	}
-
-	bzero(&sc->pci_res.io, sizeof(sc->pci_res.io));
-	bzero(&sc->pci_res.mem, sizeof(sc->pci_res.mem));
-
-	cell_ptr = ranges_buf;
-	for (touple = 0; touple < tuples_count; touple++) {
-		flags = fdt_data_get((void *)cell_ptr, 1);
-
-		if (flags & OFW_PCI_PHYS_HI_SPACE_IO) {
-			range = &sc->pci_res.io;
-			type = SYS_RES_IOPORT;
-		} else if (flags & OFW_PCI_PHYS_HI_SPACE_MEM32) {
-			range = &sc->pci_res.mem;
-			type = SYS_RES_MEMORY;
-		} else {
-			retval = ERANGE;
-			goto out;
-		}
-
-		range->flags = flags;
-		cell_ptr++;
-		range->pci_addr = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-		range->cpu_addr = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-		range->size = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-
-		if (bootverbose) {
-			device_printf(sc->dev,
-			    "\tCPU: 0x%016lx..0x%016lx -> PCI: 0x%016lx\n",
-			    range->cpu_addr,
-			    range->cpu_addr + range->size - 1,
-			    range->pci_addr);
-		}
-
-		if (xgene_pcie_map_range(sc, range, type) != 0) {
-			retval = ERANGE;
-			goto out;
-		}
-	}
-	free(ranges_buf, M_OFWPROP);
-
-	/*
-	 * Get 'dma-ranges' property
-	 */
-	cells_count = OF_getprop_alloc(node, "dma-ranges",
-		    sizeof(pcell_t), (void **)&ranges_buf);
-	if (cells_count == -1) {
-		device_printf(sc->dev,
-		    "ERROR: wrong FDT 'dma-ranges' property\n");
-		return (ENXIO);
-	}
-	tuples_count = cells_count /
-			    (pci_addr_cells + parent_addr_cells + size_cells);
-	if (tuples_count != XGENE_DMA_RANGES_COUNT) {
-		device_printf(sc->dev, "ERROR: "
-		    "unexpected number of 'dma-ranges' tuples in FDT\n");
-		retval = ENXIO;
-		goto out;
-	}
-
-	for (i = 0 ; i < XGENE_DMA_RANGES_COUNT; i++) {
-		bzero(&sc->pci_res.dma_ranges.dma[i],
-		    sizeof(sc->pci_res.dma_ranges.dma[i]));
-	}
-
-	cell_ptr = ranges_buf;
-	for (touple = 0; touple < tuples_count; touple++) {
-		if (touple < XGENE_DMA_RANGES_COUNT)
-			range = &sc->pci_res.dma_ranges.dma[touple];
-		else {
-			retval = ERANGE;
-			goto out;
-		}
-
-		range->flags = fdt_data_get((void *)cell_ptr, 1);
-		cell_ptr++;
-		range->pci_addr = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-		range->cpu_addr = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-		range->size = fdt_data_get((void *)cell_ptr, 2);
-		cell_ptr += 2;
-
-		if (bootverbose) {
-			device_printf(sc->dev,
-			    "\tDMA%d: 0x%016lx..0x%016lx -> PCI: 0x%016lx\n",
-			    touple,
-			    range->cpu_addr,
-			    range->cpu_addr + range->size - 1,
-			    range->pci_addr);
-		}
+	/* setup DMA transaction windows */
+	for (int i = 0; i < XGENE_DMA_RANGES_COUNT; i++) {
+		range = &sc->pci_res.dma_ranges.dma[i];
 
 		xgene_pcie_setup_ib_reg(sc, range->cpu_addr, range->pci_addr,
-		    range->size ,range->flags & OFW_PCI_PHYS_HI_PREFETCHABLE,
-		    &ib_reg_mask);
+		range->size ,range->flags & OFW_PCI_PHYS_HI_PREFETCHABLE,
+		&ib_reg_mask);
 	}
-
-out:
-	free(ranges_buf, M_OFWPROP);
+err:
 	return (retval);
 }
 
@@ -807,44 +691,26 @@ xgene_pcie_linkup_status(struct xgene_pcie_softc *sc)
 static int
 xgene_pcie_setup(struct xgene_pcie_softc *sc)
 {
-	int err;
 
+	/* Clean and update basic information */
 	xgene_pcie_clear_firmware_config(sc);
 	xgene_pcie_write_vendor_device_ids(sc);
 
-	/* Parse FDT for memory windows */
-	err = xgene_pcie_parse_fdt_ranges(sc);
-	if (err != 0) {
-		device_printf(sc->dev,
-		    "ERROR: parsing FDT ranges failed (err: %d)\n", err);
+	/* Setup memory windows */
+	if (xgene_pcie_setup_memory_windows(sc) != 0)
 		return (ENXIO);
-	}
 
+	/* Enable configuration registers and show status */
 	xgene_pcie_setup_cfg_reg(sc);
 	xgene_pcie_linkup_status(sc);
 
-	return (err);
+	return (0);
 }
 
 /*
  * Generic device interfacee
  */
-
-static int
-xgene_pcie_probe(device_t self)
-{
-
-	if (!ofw_bus_status_okay(self))
-		return (ENXIO);
-
-	if (!ofw_bus_is_compatible(self, "apm,xgene-pcie"))
-		return (ENXIO);
-
-	device_set_desc(self, "APM X-Gene Integrated PCI-Express Controller");
-	return (BUS_PROBE_DEFAULT);
-}
-
-static int
+int
 xgene_pcie_attach(device_t self)
 {
 	struct xgene_pcie_softc *sc;
@@ -852,7 +718,6 @@ xgene_pcie_attach(device_t self)
 	int err, maxslot = 0;
 
 	sc = device_get_softc(self);
-	sc->dev = self;
 
 	sc->busnr = 0;
 
@@ -1129,9 +994,6 @@ xgene_pcie_release_resource(device_t dev, device_t child,
  * Newbus interface declarations
  */
 static device_method_t xgene_pcie_methods[] = {
-	DEVMETHOD(device_probe,			xgene_pcie_probe),
-	DEVMETHOD(device_attach,		xgene_pcie_attach),
-
 	DEVMETHOD(pcib_maxslots,		xgene_pcie_maxslots),
 	DEVMETHOD(pcib_read_config,		xgene_pcie_read_config),
 	DEVMETHOD(pcib_write_config,		xgene_pcie_write_config),
@@ -1150,14 +1012,4 @@ static device_method_t xgene_pcie_methods[] = {
 	DEVMETHOD_END
 };
 
-static driver_t xgene_pcie_driver = {
-	"pcib",
-	xgene_pcie_methods,
-	sizeof(struct xgene_pcie_softc),
-};
-
-static devclass_t xgene_pcie_devclass;
-
-DRIVER_MODULE(pcib, ofwbus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
-DRIVER_MODULE(pcib, simplebus, xgene_pcie_driver, xgene_pcie_devclass, 0, 0);
-
+DEFINE_CLASS_0(pcib, xgene_pcie_driver, xgene_pcie_methods, sizeof(struct xgene_pcie_softc));

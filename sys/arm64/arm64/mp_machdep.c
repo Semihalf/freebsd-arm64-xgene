@@ -65,8 +65,6 @@ __FBSDID("$FreeBSD$");
 /* ARM64TODO: check if PSCI is in the conf */
 //#include <dev/psci/psci.h>
 
-boolean_t ofw_cpu_reg(phandle_t node, u_int, cell_t *);
-
 extern struct pcpu __pcpu[];
 
 static enum {

@@ -134,6 +134,8 @@ static int xge_miibus_readreg(device_t, int, int);
 static int xge_miibus_writereg(device_t, int, int, int);
 static void xge_miibus_statchg(device_t);
 
+static void xge_gmac_freq_set(struct xgene_enet_pdata *);
+
 static int xge_sgmac_media_change(struct ifnet *);
 static void xge_sgmac_media_status(struct ifnet *, struct ifmediareq *);
 static int xge_xgmac_media_change(struct ifnet *);
@@ -160,12 +162,10 @@ static int xge_init_hw(struct xge_softc *);
 static int xge_setup_ops(struct xge_softc *);
 static void xge_map_dma_addr(void *, bus_dma_segment_t *, int, int);
 
-static int xge_detach(device_t);
 static int xge_shutdown(device_t);
 
 static device_method_t xge_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_detach,	xge_detach),
 	DEVMETHOD(device_shutdown,	xge_shutdown),
 
 	/* MII interface */
@@ -460,7 +460,7 @@ xge_attach(device_t dev)
 	return (0);
 }
 
-static int
+int
 xge_detach(device_t dev)
 {
 	struct xge_softc *sc;
@@ -1852,9 +1852,13 @@ xge_miibus_statchg(device_t dev)
 		break;
 	}
 
-	mac_ops->init(pdata);
-	mac_ops->rx_enable(pdata);
-	mac_ops->tx_enable(pdata);
+	if (pdata->phy_speed != SPEED_UNKNOWN) {
+		xge_gmac_freq_set(pdata);
+
+		mac_ops->init(pdata);
+		mac_ops->rx_enable(pdata);
+		mac_ops->tx_enable(pdata);
+	}
 }
 
 static int
@@ -1890,6 +1894,35 @@ xge_gmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 	XGE_GLOBAL_UNLOCK(sc);
 }
 
+static void
+xge_gmac_freq_set(struct xgene_enet_pdata *pdata)
+{
+	struct xge_softc *sc;
+
+	sc = device_get_softc(pdata->ndev);
+
+	switch (pdata->phy_speed) {
+	case SPEED_1000:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x8);
+		break;
+	case SPEED_100:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x28);
+		break;
+	case SPEED_10:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x190);
+		break;
+	default:
+		/* Should not happen but... */
+		device_printf(pdata->ndev,
+		    "Trying to set unsupported speed on RGMII port: %d\n",
+		    pdata->phy_speed);
+		break;
+	}
+
+}
 /*****************************************************************************
  ****************************** Ifmedia **************************************
  *****************************************************************************/

@@ -224,6 +224,8 @@ enum xgene_enet_rm {
 #define IS_LEN				1
 #define TYPE_ETH_WORK_MESSAGE_POS	44
 
+#define	SCU_ETHDIV_ADDR			0x238
+
 struct xgene_enet_raw_desc {
 	__le64 m0;
 	__le64 m1;

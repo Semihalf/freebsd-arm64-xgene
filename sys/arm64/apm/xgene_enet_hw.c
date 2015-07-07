@@ -513,7 +513,10 @@ static void xgene_gmac_init(struct xgene_enet_pdata *pdata)
 	default:
 		ENET_INTERFACE_MODE2_SET(&mc2, 2);
 		intf_ctl |= ENET_GHD_MODE;
+		CFG_MACMODE_SET(&icm0, 2);
+		CFG_WAITASYNCRD_SET(&icm2, 16);
 		CFG_TXCLK_MUXSEL0_SET(&rgmii, 4);
+		rgmii |= CFG_SPEED_1250;
 		xgene_enet_rd_csr(pdata, DEBUG_REG_ADDR, &value);
 		value |= CFG_BYPASS_UNISEC_TX | CFG_BYPASS_UNISEC_RX;
 		xgene_enet_wr_csr(pdata, DEBUG_REG_ADDR, value);

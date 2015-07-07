@@ -64,6 +64,7 @@ static int xgene_pcie_fdt_probe(device_t self);
 static int xgene_pcie_fdt_attach(device_t self);
 
 static device_method_t xgene_pcie_fdt_methods[] = {
+
 	DEVMETHOD(device_probe,		xgene_pcie_fdt_probe),
 	DEVMETHOD(device_attach,	xgene_pcie_fdt_attach),
 
@@ -75,11 +76,10 @@ DEFINE_CLASS_1(pcie, xgene_pcie_fdt_driver, xgene_pcie_fdt_methods,
 
 static devclass_t xgene_pcie_fdt_devclass;
 
-DRIVER_MODULE(pcib, simplebus, xgene_pcie_fdt_driver,ro
+DRIVER_MODULE(pcib, simplebus, xgene_pcie_fdt_driver,
 		xgene_pcie_fdt_devclass, 0, 0);
 DRIVER_MODULE(pcib, ofwbus, xgene_pcie_fdt_driver,
 		xgene_pcie_fdt_devclass, 0, 0);
-//MODULE_DEPEND(xgene_pcie, pci, 1, 1, 1);
 
 static int
 xgene_pcie_fdt_probe(device_t self)
@@ -90,7 +90,7 @@ xgene_pcie_fdt_probe(device_t self)
 	if (!ofw_bus_is_compatible(self, "apm,xgene-pcie"))
 		return (ENXIO);
 
-	device_set_desc(self, "APM X-Gene Integrated PCI-Express Controller");
+	device_set_desc(self, XGENE_DESC_STR);
 	return (BUS_PROBE_DEFAULT);
 }
 

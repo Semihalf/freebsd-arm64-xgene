@@ -34,6 +34,8 @@
 #ifndef __XGENE_PCIE_H_
 #define __XGENE_PCIE_H_
 
+#define XGENE_DESC_STR "APM X-Gene Integrated PCI-Express Controller"
+
 #define	XGENE_PCIE_RESOURCE_TYPE	0x8
 #define	XGENE_PCIE_ROOT_CMPLX_CLASS	0x060400
 #define	XGENE_PCIE_ENDPOINT_CLASS	0x118000
@@ -75,6 +77,7 @@
 #define	SIZE_1G				0x40000000
 #define	SIZE_1T				(SIZE_1G * 1024ULL)
 
+/* Number of DMA ranges included in DTS */
 #define	XGENE_DMA_RANGES_COUNT		2
 
 /* Helpers for CSR space R/W access */
@@ -148,48 +151,8 @@ static struct resource_spec xgene_pcie_mem_spec[] = {
 	{ -1, 0, 0 }
 };
 
-/*
- * Forward prototypes
- */
+/* Forward prototype */
 int xgene_pcie_attach(device_t);
-static uint32_t xgene_pcie_read_config(device_t, u_int, u_int, u_int, u_int,
-    int);
-static void xgene_pcie_write_config(device_t, u_int, u_int, u_int, u_int,
-    uint32_t, int);
-static int xgene_pcie_maxslots(device_t);
-static int xgene_pcie_read_ivar(device_t, device_t, int, uintptr_t *);
-static int xgene_pcie_write_ivar(device_t, device_t, int, uintptr_t);
-static struct resource *xgene_pcie_alloc_resource(device_t, device_t, int,
-    int *, u_long, u_long, u_long, u_int);
-static int xgene_pcie_release_resource(device_t, device_t, int, int,
-    struct resource *);
-static void xgene_pcie_init_irqs(struct xgene_pcie_softc*);
-static int xgene_pcie_setup(struct xgene_pcie_softc *);
-static int xgene_pcie_map_range(struct xgene_pcie_softc *, struct range *, int);
-static void xgene_pcie_setup_ib_reg(struct xgene_pcie_softc *, uint64_t,
-    uint64_t, uint64_t, boolean_t, uint8_t *);
-static uint64_t xgene_pcie_xlate_addr_pci_to_cpu(struct xgene_pcie_softc*,
-		bus_addr_t, int);
-static int xgene_pcib_init(struct xgene_pcie_softc *, int, int);
-static int xgene_pcib_init_bar(struct xgene_pcie_softc *, int, int, int, int);
-static void xgene_pcie_clear_firmware_config(struct xgene_pcie_softc *);
-static int xgene_pcie_setup_memory_windows(struct xgene_pcie_softc *);
-static int xgene_pcie_select_ib_region(uint8_t *, uint64_t);
-static void xgene_pcie_set_cfg_offset(struct xgene_pcie_softc *, u_int);
-static uint64_t xgene_pcie_set_ib_mask(struct xgene_pcie_softc *,
-    uint32_t, uint32_t, uint64_t);
-static void xgene_pcie_set_rtdid_reg(struct xgene_pcie_softc *,
-    u_int, u_int, u_int);
-static void xgene_pcie_setup_cfg_reg(struct xgene_pcie_softc *);
-static void xgene_pcie_setup_outbound_reg(struct xgene_pcie_softc *, uint32_t,
-    uint64_t, uint64_t, uint64_t, int);
-static void xgene_pcie_setup_pims(struct xgene_pcie_softc *, uint32_t,
-    uint64_t, uint64_t);
-static void xgene_pcie_write_vendor_device_ids(struct xgene_pcie_softc *);
-static void xgene_pcie_linkup_status(struct xgene_pcie_softc *);
-static boolean_t xgene_pcie_hide_root_cmplx_bars(struct xgene_pcie_softc *,
-    u_int, u_int);
-static int xgene_pcie_route_interrupt(device_t, device_t, int);
 
 /* Bit masking helpers */
 static __inline uint32_t

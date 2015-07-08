@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #ifdef FDT
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_cpu.h>
+#include <dev/ofw/ofw_bus.h>
 #endif
 
 extern struct pcpu __pcpu[];
@@ -72,6 +73,12 @@ static enum {
 	CPUS_FDT,
 #endif
 } cpu_enum_method;
+
+enum ap_release_method {
+	RELEASE_UNKNOWN,
+	RELEASE_PSCI,
+	RELEASE_SPINTABLE,
+};
 
 static device_identify_t arm64_cpu_identify;
 static device_probe_t arm64_cpu_probe;
@@ -175,29 +182,66 @@ arm64_cpu_attach(device_t dev)
 	return (0);
 }
 
+static enum ap_release_method
+check_release_method_fdt(device_t dev, u_int cpuid, bus_addr_t *release_addr)
+{
+	phandle_t node;
+	pcell_t	cpu_release_addr[2];
+	pcell_t addr_cells;
+	char enable_method[16];
+	enum ap_release_method rel_method;
+	int rv;
+
+	rel_method = RELEASE_UNKNOWN;
+	node = ofw_bus_get_node(dev);
+
+	/* Get the release method for this cpu from FDT */
+	if (!OF_hasprop(node, "enable-method")) {
+		printf("No enable-method property in FDT\n");
+		return (rel_method);
+	}
+
+	OF_getprop(node, "enable-method", enable_method, sizeof(enable_method));
+	if (strcmp(enable_method, "psci") == 0)
+		rel_method = RELEASE_PSCI;
+	else if (strcmp(enable_method, "spin-table") == 0)
+		rel_method = RELEASE_SPINTABLE;
+	else {
+		printf("Invalid enable-method property in FDT\n");
+		return (rel_method);
+	}
+
+	if (rel_method == RELEASE_SPINTABLE) {
+		/* Retrieve release address for this CPU */
+		addr_cells = 2;
+		OF_getencprop(OF_parent(node), "#address-cells", &addr_cells,
+		    sizeof(addr_cells));
+		rv = OF_getencprop(node, "cpu-release-addr", cpu_release_addr,
+		    addr_cells * sizeof(pcell_t));
+		if (rv != addr_cells * sizeof(pcell_t)) {
+			printf("Invalid cpu-release-addr property in FDT\n");
+			return (RELEASE_UNKNOWN);
+		}
+		*release_addr = ((bus_addr_t)cpu_release_addr[0] << 32) |
+		    cpu_release_addr[1];
+	}
+
+	return (rel_method);
+
+}
+
 #define DO_SEV_LATER
 static void
-platform_mp_start_ap(uint64_t target_cpu, vm_paddr_t pa)
+spintable_release_cpu(u_int cpuid, vm_paddr_t pa, bus_addr_t
+    release_addr)
 {
 	bus_space_handle_t handle;
-	bus_addr_t	release_address;
-	u_int		aff1, aff0;
 
-/* ARM64TODO: Release addresses are specific to APM XGene. They should be taken
- * from FDT.
- */
-#define APM_BASE_RELEASE_ADDR 0x4000008000UL
-
-	aff1 = (target_cpu >> 8) & 0xFF;
-	aff0 = target_cpu & 0xFF;
-	release_address = APM_BASE_RELEASE_ADDR + 0x1000 * (((aff1 & 0x7F) << 1) |
-	    (aff0 & 0x1));
-	release_address += 8;
 	if (bootverbose)
-		printf("Starting core %lx, writing to release address 0x%lx\n",
-		    target_cpu, release_address);
-	if (bus_space_map(fdtbus_bs_tag, release_address, 8, 0, &handle))
-		panic("Could not map CPU release address\n");
+		printf("Writing to release address 0x%lx\n",
+		    release_addr);
+	if (bus_space_map(fdtbus_bs_tag, release_addr, 8, 0, &handle))
+		panic("Could not map CPU release address");
 	dsb();
 	__asm __volatile(
 	    "ic ialluis");
@@ -215,7 +259,7 @@ platform_mp_start_ap(uint64_t target_cpu, vm_paddr_t pa)
 }
 
 static void
-platform_do_sev(void)
+spintable_do_sev(void)
 {
 	dsb();
 	__asm __volatile(
@@ -232,6 +276,8 @@ arm64_cpu_start(device_t dev, u_int cpuid)
 {
 	const uint32_t *reg;
 	uint64_t target_cpu;
+	enum ap_release_method rel_method;
+	bus_addr_t release_addr;
 	vm_paddr_t pa;
 	size_t count;
 
@@ -265,10 +311,13 @@ arm64_cpu_start(device_t dev, u_int cpuid)
 		printf("Starting CPU %u (%lx)\n", cpuid, target_cpu);
 		pa = pmap_extract(kernel_pmap, (vm_offset_t)mpentry);
 
-		/* ARM64TODO: We should check if we should use pcsi first
-		 * psci_cpu_on(target_cpu, pa, cpuid);
-		 */
-		platform_mp_start_ap(target_cpu, pa);
+		rel_method = check_release_method_fdt(dev, cpuid, &release_addr);
+		if (rel_method == RELEASE_PSCI)
+			psci_cpu_on(target_cpu, pa, cpuid);
+		else if (rel_method == RELEASE_SPINTABLE)
+			spintable_release_cpu(cpuid, pa, release_addr);
+		else
+			printf("Failed to read release method from FDT\n");
 	}
 
 	return (true);
@@ -285,7 +334,8 @@ release_aps(void *dummy __unused)
 			running++;
 
 #ifdef	DO_SEV_LATER
-	platform_do_sev();
+	/* Wake up all secondary cores */
+	spintable_do_sev();
 #endif
 
 	/* TODO: We will hit when some cores are disabled */

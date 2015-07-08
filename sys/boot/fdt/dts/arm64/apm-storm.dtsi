@@ -24,56 +24,57 @@
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x000>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x00008008>;
+
 		};
 		cpu@001 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x001>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x00009008>;
 		};
 		cpu@100 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x100>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000a008>;
 		};
 		cpu@101 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x101>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000b008>;
 		};
 		cpu@200 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x200>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000c008>;
 		};
 		cpu@201 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x201>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000d008>;
 		};
 		cpu@300 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x300>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000e008>;
 		};
 		cpu@301 {
 			device_type = "cpu";
 			compatible = "apm,potenza", "arm,armv8";
 			reg = <0x0 0x301>;
 			enable-method = "spin-table";
-			cpu-release-addr = <0x1 0x0000fff8>;
+			cpu-release-addr = <0x40 0x0000f008>;
 		};
 	};
 

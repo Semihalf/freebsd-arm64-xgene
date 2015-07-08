@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/bus.h>
 #include <machine/fdt.h>
+#include <machine/psci.h>
 #ifdef VFP
 #include <machine/vfp.h>
 #endif
@@ -62,8 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_cpu.h>
 #endif
-/* ARM64TODO: check if PSCI is in the conf */
-//#include <dev/psci/psci.h>
 
 extern struct pcpu __pcpu[];
 

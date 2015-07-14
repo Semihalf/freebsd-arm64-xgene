@@ -183,6 +183,7 @@ enum xgene_enet_rm {
 #define RX_EN				BIT(2)
 #define ENET_LHD_MODE			BIT(25)
 #define ENET_GHD_MODE			BIT(26)
+#define	ENET_LGHD_MASK			(ENET_LHD_MODE | ENET_GHD_MODE)
 #define FULL_DUPLEX2			BIT(0)
 #define SCAN_AUTO_INCR			BIT(5)
 #define TBYT_ADDR			0x38
@@ -222,6 +223,9 @@ enum xgene_enet_rm {
 #define IS_POS				24	/* IP protocol select */
 #define IS_LEN				1
 #define TYPE_ETH_WORK_MESSAGE_POS	44
+
+#define	SCU_ETHDIV_ADDR			0x238
+#define	ENET_LINK_STATUS_ADDR		0x7c4
 
 struct xgene_enet_raw_desc {
 	__le64 m0;

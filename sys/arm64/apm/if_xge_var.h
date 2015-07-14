@@ -60,6 +60,7 @@ enum phy_conn_type {
 	PHY_CONN_UNKNOWN,
 	PHY_CONN_RGMII,
 	PHY_CONN_SGMII,
+	PHY_CONN_XGMII,
 };
 
 #define	PORT_ID_INVALID		(-1)
@@ -68,6 +69,7 @@ enum phy_conn_type {
 #define	PHY_CONN_UNKNOWN_STR	"Unknown"
 #define	PHY_CONN_RGMII_STR	"RGMII"
 #define	PHY_CONN_SGMII_STR	"SGMII"
+#define	PHY_CONN_XGMII_STR	"XGMII"
 
 struct xge_buff {
 	bus_dma_tag_t		dmat;
@@ -104,6 +106,10 @@ struct xge_softc {
 	struct resource *	qm_deq_irq;
 	void *			qm_deq_irq_ihl;
 
+	bus_space_tag_t		ethclk_bst;	/* RGMII */
+	bus_space_handle_t	ethclk_bsh;	/* RGMII */
+	bus_size_t		ethclk_bsz;	/* RGMII */
+
 	struct buf_ring *	rx_mbufs;	/* Buffers received */
 
 	struct buf_ring *	tx_mbufs;	/* Buffers transmitted */
@@ -111,5 +117,6 @@ struct xge_softc {
 };
 
 int xge_attach(device_t);
+int xge_detach(device_t);
 
 #endif /* !__IF_XGE_VAR_H__ */

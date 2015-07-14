@@ -495,6 +495,7 @@ static void xgene_gmac_init(struct xgene_enet_pdata *pdata)
 	xgene_enet_rd_mcx_mac(pdata, INTERFACE_CONTROL_ADDR, &intf_ctl);
 	xgene_enet_rd_csr(pdata, RGMII_REG_0_ADDR, &rgmii);
 
+	intf_ctl &= ~ENET_LGHD_MASK;
 	switch (pdata->phy_speed) {
 	case SPEED_10:
 		ENET_INTERFACE_MODE2_SET(&mc2, 1);
@@ -512,7 +513,10 @@ static void xgene_gmac_init(struct xgene_enet_pdata *pdata)
 	default:
 		ENET_INTERFACE_MODE2_SET(&mc2, 2);
 		intf_ctl |= ENET_GHD_MODE;
+		CFG_MACMODE_SET(&icm0, 2);
+		CFG_WAITASYNCRD_SET(&icm2, 16);
 		CFG_TXCLK_MUXSEL0_SET(&rgmii, 4);
+		rgmii |= CFG_SPEED_1250;
 		xgene_enet_rd_csr(pdata, DEBUG_REG_ADDR, &value);
 		value |= CFG_BYPASS_UNISEC_TX | CFG_BYPASS_UNISEC_RX;
 		xgene_enet_wr_csr(pdata, DEBUG_REG_ADDR, value);

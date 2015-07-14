@@ -30,9 +30,14 @@
 #define SKB_BUFFER_SIZE		(XGENE_ENET_MAX_MTU - NET_IP_ALIGN)
 #define NUM_PKT_BUF	64
 #define NUM_BUFPOOL	32
-#define START_ETH_BUFNUM	2
-#define START_BP_BUFNUM		0x22
-#define START_RING_NUM		8
+#define START_CPU_BUFNUM_0	0
+#define START_ETH_BUFNUM_0	2
+#define START_BP_BUFNUM_0	0x22
+#define START_RING_NUM_0	8
+#define START_CPU_BUFNUM_1	12
+#define START_ETH_BUFNUM_1	10
+#define START_BP_BUFNUM_1	0x2A
+#define START_RING_NUM_1	264
 
 #define PHY_POLL_LINK_ON	(10 * HZ)
 #define PHY_POLL_LINK_OFF	(PHY_POLL_LINK_ON / 5)
@@ -86,6 +91,11 @@ struct xgene_mac_ops {
 	void (*rx_disable)(struct xgene_enet_pdata *pdata);
 	void (*set_mac_addr)(struct xgene_enet_pdata *pdata);
 	void (*get_mac_addr)(struct xgene_enet_pdata *pdata, u8 *dev_addr);
+#if !defined(__FreeBSD__)
+	void (*link_state)(struct work_struct *work);
+#else
+	u32 (*link_state)(struct xgene_enet_pdata *pdata);
+#endif
 };
 
 struct xgene_port_ops {
@@ -120,6 +130,10 @@ struct xgene_enet_pdata {
 	struct xgene_mac_ops *mac_ops;
 	struct xgene_port_ops *port_ops;
 	u32 port_id;
+	u8 cpu_bufnum;
+	u8 eth_bufnum;
+	u8 bp_bufnum;
+	u16 ring_num;
 };
 
 struct xgene_indirect_ctl {
@@ -153,7 +167,5 @@ static inline u64 xgene_enet_get_field_value(int pos, int len, u64 src)
 
 #define GET_VAL(field, src) \
 		xgene_enet_get_field_value(field ## _POS, field ## _LEN, src)
-
-u32 xgene_enet_link_status(struct xgene_enet_pdata *);
 
 #endif /* __XGENE_ENET_MAIN_H__ */

@@ -433,11 +433,7 @@ xge_attach(device_t dev)
 		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX),
 		    0, NULL);
 
-		 /*
-		  * XXX: Currently HW layer operates only in 1Gbps mode so set
-		  *      it here as a default and set AUTO in the future.
-		  */
-		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_1000_T | IFM_FDX));
+		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX));
 
 	} else if (sc->phy_conn_type == PHY_CONN_XGMII) {
 		ifmedia_init(&sc->ifmedia, IFM_IMASK, xge_xgmac_media_change,
@@ -1974,10 +1970,12 @@ static void
 xge_sgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 {
 	struct xge_softc *sc;
+	struct xgene_enet_pdata *pdata;
 	sc = ifp->if_softc;
 	boolean_t link_is_up;
 
 	sc = ifp->if_softc;
+	pdata = &sc->pdata;
 
 	XGE_GLOBAL_LOCK(sc);
 	link_is_up = xge_sx_gmac_update_status_locked(ifp);
@@ -1985,10 +1983,32 @@ xge_sgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
 
-	if (link_is_up) {
-		/* Device attached to working network */
-		ifmr->ifm_status |= IFM_ACTIVE;
+	if (!link_is_up) {
+		XGE_GLOBAL_UNLOCK(sc);
+		return;
 	}
+
+	/* Device attached to working network */
+	ifmr->ifm_status |= IFM_ACTIVE;
+
+	switch (pdata->phy_speed) {
+	case SPEED_10:
+		ifmr->ifm_active |= IFM_10_T;
+		break;
+	case SPEED_100:
+		ifmr->ifm_active |= IFM_100_TX;
+		break;
+	case SPEED_1000:
+		ifmr->ifm_active |= IFM_1000_T;
+		break;
+	default:
+		ifmr->ifm_active |= IFM_AUTO;
+		break;
+	}
+
+	/* Always full duplex */
+	ifmr->ifm_active |= IFM_FDX;
+
 	XGE_GLOBAL_UNLOCK(sc);
 }
 

@@ -246,19 +246,42 @@ static void xgene_sgmac_get_mac_addr(struct xgene_enet_pdata *pdata, u8 *dev_add
 	dev_addr[5] = (addr1 >> 24);
 }
 
-static u32 xgene_enet_link_status(struct xgene_enet_pdata *p)
+static u32 xgene_enet_link_speed(struct xgene_enet_pdata *p)
 {
 	u32 data;
 
 	data = xgene_mii_phy_read(p, INT_PHY_ADDR,
-				  SGMII_BASE_PAGE_ABILITY_ADDR >> 2);
+	    SGMII_BASE_PAGE_ABILITY_ADDR >> 2);
 
-	return data & LINK_UP;
+	switch ((data & 0xC00U) >> 10) {
+	case RTL_PHY_SPEDD_10:
+		return (SPEED_10);
+	case RTL_PHY_SPEED_100:
+		return (SPEED_100);
+	case RTL_PHY_SPEED_1000: /* fall through */
+	default:
+		return (SPEED_1000);
+	}
+}
+
+static u32 xgene_enet_link_status(struct xgene_enet_pdata *p)
+{
+	u32 data;
+	u32 link_port_mask;
+
+	data = ENET_CSR_READ32(p, p->eth_csr_addr + ENET_LINK_STATUS_ADDR);
+	/* Update link speed */
+	p->phy_speed = xgene_enet_link_speed(p);
+	/* Mask link status for this port */
+	link_port_mask = (1 << p->port_id);
+
+	return (data & link_port_mask);
 }
 
 static void xgene_sgmac_init(struct xgene_enet_pdata *p)
 {
 	u32 data, loop = 10;
+	u32 mc2, intf_ctl;
 	u32 offset = p->port_id * 4;
 
 	xgene_sgmac_reset(p);
@@ -281,10 +304,33 @@ static void xgene_sgmac_init(struct xgene_enet_pdata *p)
 	if (!(data & AUTO_NEG_COMPLETE) || !(data & LINK_STATUS))
 		netdev_err(p->ndev, "Auto-negotiation failed\n");
 
-	data = xgene_enet_rd_mac(p, MAC_CONFIG_2_ADDR);
-	ENET_INTERFACE_MODE2_SET(&data, 2);
-	xgene_enet_wr_mac(p, MAC_CONFIG_2_ADDR, data | FULL_DUPLEX2);
-	xgene_enet_wr_mac(p, INTERFACE_CONTROL_ADDR, ENET_GHD_MODE);
+	mc2 = xgene_enet_rd_mac(p, MAC_CONFIG_2_ADDR);
+	intf_ctl = xgene_enet_rd_mac(p, INTERFACE_CONTROL_ADDR);
+	intf_ctl &= ~ENET_LGHD_MASK;
+
+	p->phy_speed = xgene_enet_link_speed(p);
+
+	switch (p->phy_speed) {
+	case SPEED_10:
+		ENET_INTERFACE_MODE2_SET(&mc2, 1);
+
+		break;
+	case SPEED_100:
+		ENET_INTERFACE_MODE2_SET(&mc2, 1);
+		intf_ctl |= ENET_LHD_MODE;
+		break;
+	default:
+		ENET_INTERFACE_MODE2_SET(&mc2, 2);
+		intf_ctl |= ENET_GHD_MODE;
+		data = xgene_enet_rd_csr(p, DEBUG_REG_ADDR);
+		data |= CFG_BYPASS_UNISEC_TX | CFG_BYPASS_UNISEC_RX;
+		xgene_enet_wr_csr(p, DEBUG_REG_ADDR, data);
+		break;
+	}
+
+	mc2 |= FULL_DUPLEX2;
+	xgene_enet_wr_mac(p, MAC_CONFIG_2_ADDR, mc2);
+	xgene_enet_wr_mac(p, INTERFACE_CONTROL_ADDR, intf_ctl);
 
 	data = xgene_enet_rd_csr(p, ENET_SPARE_CFG_REG_ADDR);
 	data |= MPA_IDLE_WITH_QMI_EMPTY;

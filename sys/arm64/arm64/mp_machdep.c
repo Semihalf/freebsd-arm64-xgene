@@ -93,6 +93,7 @@ struct pcb stoppcbs[MAXCPU];
 static uint32_t cpu_reg[MAXCPU][2];
 #endif
 static device_t cpu_list[MAXCPU];
+static phandle_t cpu_node_list[MAXCPU];
 
 void mpentry(unsigned long cpuid);
 void init_secondary(uint64_t);
@@ -193,7 +194,7 @@ check_release_method_fdt(device_t dev, u_int cpuid, bus_addr_t *release_addr)
 	int rv;
 
 	rel_method = RELEASE_UNKNOWN;
-	node = ofw_bus_get_node(dev);
+	node = cpu_node_list[cpuid];
 
 	/* Get the release method for this cpu from FDT */
 	if (!OF_hasprop(node, "enable-method")) {
@@ -555,6 +556,9 @@ cpu_init_fdt(u_int id, phandle_t node, u_int addr_size, pcell_t *reg)
 	dpcpu[id - 1] = (void *)kmem_malloc(kernel_arena, DPCPU_SIZE,
 	    M_WAITOK | M_ZERO);
 	dpcpu_init(dpcpu[id - 1], id);
+
+	/* Store CPU phandle to allow FDT parsing later */
+	cpu_node_list[id] = node;
 
 	return (1);
 }

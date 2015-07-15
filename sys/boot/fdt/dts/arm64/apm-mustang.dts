@@ -27,18 +27,13 @@
 	};
 
 	chosen {
-		stdout-path = "/soc/serial@1c020000";
+		linux,stdout-path = "/soc/serial@1c020000";
 	};
 };
 
-&pcie0clk {
-	status = "ok";
-};
-
-&pcie0 {
-	status = "ok";
-};
-
+/*
+ * Board-specific peripheral configurations
+ */
 &serial0 {
 	status = "ok";
 };
@@ -48,6 +43,10 @@
 };
 
 &sgenet0 {
+	status = "ok";
+};
+
+&sgenet1 {
 	status = "ok";
 };
 
@@ -63,10 +62,51 @@
 	status = "ok";
 };
 
-&usb0 {
+&sdhc0 {
 	status = "ok";
 };
 
-&usb1 {
+&spi0 {
 	status = "ok";
+
+	flash: n25q256a@0 {
+	status = "ok";
+	cell-index = <0>;
+	#address-cells = <1>;
+	#size-cells = <1>;
+		compatible = "n25q256a";
+		reg = <0>;
+		spi-max-frequency = <15000000>;
+		spi-cpha;
+		spi-cpol;
+
+		partition@0x00000000 {
+			label =	"Boot loader";
+			reg = <0x00000000 0x01000000>;
+		};
+		partition@0x01000000 {
+			label = "n25q256a-data";
+			reg = <0x01000000 0x01000000>;
+		};
+	};
+};
+
+&pcie0clk {
+	status = "ok";
+};
+
+&pcie0 {
+	status = "ok";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
+
+&msi {
+	status = "okay";
 };

@@ -89,6 +89,11 @@
 		interrupts = <1 9 0xf04>;	/* GIC Maintenence IRQ */
 	};
 
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <1 12 0xff04>;
+	};
+
 	timer {
 		compatible = "arm,armv8-timer";
 		interrupts = <1 0 0xff01>,	/* Secure Phys IRQ */
@@ -185,6 +190,25 @@
 				reg-names = "csr-reg";
 				csr-mask = <0x3>;
 				clock-output-names = "sge0clk";
+			};
+
+			sge1clk: sge1clk@1f21c000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&socplldiv2 0>;
+				reg = <0x0 0x1f21c000 0x0 0x1000>;
+				reg-names = "csr-reg";
+				csr-mask = <0xc>;
+				clock-output-names = "sge1clk";
+			};
+
+			cryptoclk: cryptoclk@1f25c000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&socplldiv2 0>;
+				reg = <0x0 0x1f25c000 0x0 0x1000>;
+				reg-names = "csr-reg";
+				clock-output-names = "cryptoclk";
 			};
 
 			xge0clk: xge0clk@1f61c000 {
@@ -353,6 +377,46 @@
 				reg-names = "csr-reg";
 				clock-output-names = "pcie4clk";
 			};
+		};
+
+		msi: msi@79000000 {
+			compatible = "xgene,gic-msi";
+			reg = <0x00 0x79000000 0x0 0x900000>;
+			msi-available-ranges = <0x0 0x1000>;
+			interrupts = <  0x0 0x10 0x4
+					0x0 0x11 0x4
+					0x0 0x12 0x4
+					0x0 0x13 0x4
+					0x0 0x14 0x4
+					0x0 0x15 0x4
+					0x0 0x16 0x4
+					0x0 0x17 0x4
+					0x0 0x18 0x4
+					0x0 0x19 0x4
+					0x0 0x1a 0x4
+					0x0 0x1b 0x4
+					0x0 0x1c 0x4
+					0x0 0x1d 0x4
+					0x0 0x1e 0x4
+					0x0 0x1f 0x4>;
+		};
+
+		msievent: msievent@79000000 {
+			status = "ok";
+			compatible = "xgene,xgene-msievent";
+			reg =  < 0x00 0x79e00000 0x0 0x2000000
+				0x00 0x79000000 0x0 0x900000>;
+			reg-names = "msi_gen", "msi_term";
+			interrupts = <0x0 0x10 0x4>;
+		};
+
+		pciedma: pciedma@1f2b0154 {
+			device_type = "dma";
+			compatible = "xgene,xgene-pciedma";
+			port_num=<0x0>;
+			reg = <0x00 0x1C030000 0x0 0x4>;
+			reg-names = "ama-addr";
+			interrupts = <0x0 0xc6 0x4>;
 		};
 
 		pcie0: pcie@1f2b0000 {
@@ -641,11 +705,29 @@
 			status = "disabled";
 			reg = <0x0 0x1f210000 0x0 0xd100>,
 			      <0x0 0x1f200000 0x0 0Xc300>,
-			      <0x0 0x1B000000 0x0 0X200>;
+			      <0x0 0x1B000000 0x0 0X8000>;
 			reg-names = "enet_csr", "ring_csr", "ring_cmd";
-			interrupts = <0x0 0xA0 0x4>;
+			interrupts = <0x0 0xA0 0x4>,
+				     <0x0 0xA1 0x4>;
 			dma-coherent;
 			clocks = <&sge0clk 0>;
+			port-id = <0>;
+			local-mac-address = [00 00 00 00 00 00];
+			phy-connection-type = "sgmii";
+		};
+
+		sgenet1: ethernet@1f210030 {
+			compatible = "apm,xgene1-sgenet";
+			status = "disabled";
+			reg = <0x0 0x1f210000 0x0 0xd100>,
+			      <0x0 0x1f200000 0x0 0Xc300>,
+			      <0x0 0x1B000000 0x0 0X8000>;
+			reg-names = "enet_csr", "ring_csr", "ring_cmd";
+			interrupts = <0x0 0xAC 0x4>,
+				     <0x0 0xAD 0x4>;
+			port-id = <1>;
+			dma-coherent;
+			clocks = <&sge1clk 0>;
 			local-mac-address = [00 00 00 00 00 00];
 			phy-connection-type = "sgmii";
 		};
@@ -657,7 +739,8 @@
 			      <0x0 0x1f600000 0x0 0Xc300>,
 			      <0x0 0x18000000 0x0 0X200>;
 			reg-names = "enet_csr", "ring_csr", "ring_cmd";
-			interrupts = <0x0 0x60 0x4>;
+			interrupts = <0x0 0x60 0x4>,
+				     <0x0 0x61 0x4>;
 			dma-coherent;
 			clocks = <&xge0clk 0>;
 			/* mac address will be overwritten by the bootloader */

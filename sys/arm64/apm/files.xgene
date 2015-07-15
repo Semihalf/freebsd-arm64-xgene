@@ -1,0 +1,14 @@
+# $FreeBSD$
+
+arm64/apm/xgene_pcie_fdt.c	optional	pci fdt
+arm64/apm/xgene_pcie.c		optional	pci fdt
+arm64/apm/xgene_clk_fdt.c	optional	fdt fdt_clock
+arm64/apm/xgene_clk.c		standard
+arm64/apm/xgene_ahci.c		optional	ahci fdt
+arm64/apm/xgene_xhci.c		optional	xhci fdt
+arm64/apm/if_xge_fdt.c          optional        xge fdt
+arm64/apm/if_xge.c              optional        xge
+arm64/apm/xgene_enet_hw.c       optional        xge
+arm64/apm/xgene_enet_sgmac.c	optional	xge
+arm64/apm/xgene_enet_xgmac.c	optional	xge
+

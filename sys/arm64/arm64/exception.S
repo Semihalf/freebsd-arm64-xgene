@@ -142,12 +142,12 @@ handle_el1h_error:
 
 handle_el0_sync:
 	msr	daifset, #2
-	/* WMA: workaround, invalidate ALL tlbs. To be fixed. */
+	/* XXX ARM64TODO: WORKAROUND, invalidate ALL tlbs. To be fixed. */
 	dsb	sy
 	tlbi	vmalle1is
 	dsb	sy
 	isb
-	/* END OF WMA WORKAROUND */
+	/* END OF WORKAROUND */
 	save_registers 0
 	mov	x0, sp
 	bl	do_el0_sync
@@ -156,12 +156,12 @@ handle_el0_sync:
 	eret
 
 handle_el0_irq:
-	/* WMA: workaround, invalidate ALL tlbs. To be fixed. */
+	/* XXX ARM64TODO: WORKAROUND, invalidate ALL tlbs. To be fixed. */
 	dsb	sy
 	tlbi	vmalle1is
 	dsb	sy
 	isb
-	/* END OF WMA WORKAROUND */
+	/* END OF WORKAROUND */
 	save_registers 0
 	mov	x0, sp
 	bl	arm_cpu_intr

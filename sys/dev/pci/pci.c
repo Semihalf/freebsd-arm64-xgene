@@ -2962,7 +2962,7 @@ pci_add_map(device_t bus, device_t dev, int reg, struct resource_list *rl,
 			    "pci%d:%d:%d:%d bar %#x failed to allocate\n",
 			    pci_get_domain(dev), pci_get_bus(dev),
 			    pci_get_slot(dev), pci_get_function(dev), reg);
-	} else {
+	} else if (basezero) {
 		start = rman_get_start(res);
 		pci_write_bar(dev, pm, start);
 	}

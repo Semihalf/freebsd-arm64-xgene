@@ -102,6 +102,18 @@ __FBSDID("$FreeBSD$");
 #define	XGE_GLOBAL_LOCK_ASSERT(sc)					\
     mtx_assert(&(sc)->globl_mtx, MA_OWNED)
 
+#define	XGE_SGMAC_LOCK(sc)						\
+do {									\
+	if ((sc)->phy_conn_type == PHY_CONN_SGMII)			\
+		mtx_lock(&sgmac_mtx);					\
+} while (0)
+
+#define	XGE_SGMAC_UNLOCK(sc)						\
+do {									\
+	if ((sc)->phy_conn_type == PHY_CONN_SGMII)			\
+		mtx_unlock(&sgmac_mtx);					\
+} while (0)
+
 #define	XGE_RING_DESC_ALIGNMENT		256	/* Has to be 256 bytes */
 #define	XGE_RING_DESC_NSEGMENTS		1	/* Single segment */
 
@@ -122,8 +134,12 @@ static int xge_miibus_readreg(device_t, int, int);
 static int xge_miibus_writereg(device_t, int, int, int);
 static void xge_miibus_statchg(device_t);
 
+static void xge_gmac_freq_set(struct xgene_enet_pdata *);
+
 static int xge_sgmac_media_change(struct ifnet *);
 static void xge_sgmac_media_status(struct ifnet *, struct ifmediareq *);
+static int xge_xgmac_media_change(struct ifnet *);
+static void xge_xgmac_media_status(struct ifnet *, struct ifmediareq *);
 
 static void xge_mac_get_hwaddr(struct xge_softc *);
 static void xge_delete_desc_rings(struct xge_softc *);
@@ -143,15 +159,13 @@ static int xge_gmac_media_change(struct ifnet *);
 static void xge_gmac_media_status(struct ifnet *, struct ifmediareq *);
 static void xge_tick(void *);
 static int xge_init_hw(struct xge_softc *);
-static void xge_setup_ops(struct xge_softc *);
+static int xge_setup_ops(struct xge_softc *);
 static void xge_map_dma_addr(void *, bus_dma_segment_t *, int, int);
 
-static int xge_detach(device_t);
 static int xge_shutdown(device_t);
 
 static device_method_t xge_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_detach,	xge_detach),
 	DEVMETHOD(device_shutdown,	xge_shutdown),
 
 	/* MII interface */
@@ -169,6 +183,20 @@ DRIVER_MODULE(miibus, xge, miibus_driver, miibus_devclass, 0, 0);
 MODULE_DEPEND(xge, ether, 1, 1, 1);
 MODULE_DEPEND(xge, miibus, 1, 1, 1);
 
+/******************************************************************************
+ ************************* Early system initialization ************************
+ ******************************************************************************/
+static struct mtx sgmac_mtx;
+
+static void
+xge_early_init(void *dummy __unused)
+{
+
+	/* Lock to protect shared registers of SGMAC ports */
+	mtx_init(&sgmac_mtx, "XGE SGMAC lock", NULL, MTX_DEF);
+}
+SYSINIT(xge_early_init, SI_SUB_DRIVERS, SI_ORDER_FIRST, xge_early_init, NULL);
+
 /*****************************************************************************
  ***************************** Device methods ********************************
  *****************************************************************************/
@@ -177,21 +205,28 @@ xge_attach(device_t dev)
 {
 	struct xge_softc *sc = device_get_softc(dev);
 	struct xgene_enet_pdata *pdata = &sc->pdata;
+	bus_space_handle_t mac_offset;
 	struct ifnet *ifp;
 	int err;
 	int rid;
 
+	sc->dev = dev;
+
 	/*
-	 * XXX: Limit driver to RGMII (MENET) &
-	 *      SGMII (ENET) ports for now.
+	 * Before doing anything check the connection type.
+	 * This will allow us to avoid sanity checks later
+	 * (if we pass this we can assume that the connection type is OK)
 	 */
-	if (sc->phy_conn_type != PHY_CONN_RGMII &&
-	    sc->phy_conn_type != PHY_CONN_SGMII) {
-		device_printf(dev, "PHY connection type not supported\n");
+	switch (sc->phy_conn_type) {
+	case PHY_CONN_RGMII:
+	case PHY_CONN_SGMII:
+	case PHY_CONN_XGMII:
+		/* Those are valid types so continue to attach */
+		break;
+	default:
+		device_printf(dev, "Unknown or nnvalid connection type\n");
 		return (ENXIO);
 	}
-
-	sc->dev = dev;
 
 	/* Initialize global lock */
 	XGE_GLOBAL_LOCK_INIT(sc);
@@ -205,13 +240,16 @@ xge_attach(device_t dev)
 	 */
 	/* Ethernet control and status register address space */
 	rid = RES_ENET_CSR;
-	sc->enet_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->enet_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 	/* Descriptor ring control and status register address space */
 	rid = RES_RING_CSR;
-	sc->ring_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->ring_csr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 	/* Descriptor ring command register address space */
 	rid = RES_RING_CMD;
-	sc->ring_cmd = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->ring_cmd = bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE | RF_SHAREABLE);
 
 	if (!sc->enet_csr || !sc->ring_csr || !sc->ring_cmd) {
 		device_printf(dev, "Could not allocate resource for %s\n",
@@ -243,6 +281,27 @@ xge_attach(device_t dev)
 		xge_detach(dev);
 		return (ENXIO);
 	}
+	/*
+	 * Acquire port ID for SGMII ports and set up mac_offset.
+	 *
+	 * Some of the ENET (SGMAC) registers' regions are shared
+	 * among different MAC instances. Each MAC has its registers
+	 * placed within a fixed offset from the MAC number 0.
+	 * mac_offset is used to take this into account and
+	 * HAS TO BE ZEROED for any other port (GMAC/XGMAC).
+	 */
+	if (sc->phy_conn_type == PHY_CONN_SGMII) {
+		if (sc->portid == PORT_ID_INVALID ||
+		    sc->portid > PORT_ID_MAX) {
+			device_printf(dev, "Invalid port-id specified\n");
+			return (ENXIO);
+		}
+		pdata->port_id = sc->portid;
+		mac_offset = (pdata->port_id * MAC_OFFSET);
+	} else {
+		pdata->port_id = 0;
+		mac_offset = 0;
+	}
 
 	/*
 	 * XXX: For Linux HW layer this was a reference to
@@ -260,22 +319,15 @@ xge_attach(device_t dev)
 	pdata->eth_csr_addr = BLOCK_ETH_CSR_OFFSET;
 	pdata->eth_ring_if_addr = BLOCK_ETH_RING_IF_OFFSET;
 	pdata->eth_diag_csr_addr = BLOCK_ETH_DIAG_CSR_OFFSET;
+
 	if (sc->phy_conn_type == PHY_CONN_RGMII ||
 	    sc->phy_conn_type == PHY_CONN_SGMII) {
-		pdata->mcx_mac_addr = BLOCK_ETH_MAC_OFFSET;
+		pdata->mcx_mac_addr = BLOCK_ETH_MAC_OFFSET + mac_offset;
 		pdata->mcx_mac_csr_addr = BLOCK_ETH_MAC_CSR_OFFSET;
 	} else {
+		/* No need to add mac_offset here since this is always XGMAC */
 		pdata->mcx_mac_addr = BLOCK_AXG_MAC_OFFSET;
 		pdata->mcx_mac_csr_addr = BLOCK_AXG_MAC_CSR_OFFSET;
-	}
-
-	if (sc->phy_conn_type == PHY_CONN_SGMII) {
-		if (sc->portid == PORT_ID_INVALID ||
-		    sc->portid > PORT_ID_MAX) {
-			device_printf(dev, "Invalid port-id specified\n");
-			return (ENXIO);
-		}
-		pdata->port_id = sc->portid;
 	}
 
 #ifdef XGE_DEBUG
@@ -287,7 +339,14 @@ xge_attach(device_t dev)
 #endif
 
 	/* Setup X-Gene ENET ops */
-	xge_setup_ops(sc);
+	err = xge_setup_ops(sc);
+	if (err != 0) {
+		device_printf(dev,
+		    "Failed to set up MAC and PORT low-level callbacks\n");
+
+		xge_detach(dev);
+		return (err);
+	}
 
 	/* Get initial MAC address */
 	xge_mac_get_hwaddr(sc);
@@ -374,11 +433,22 @@ xge_attach(device_t dev)
 		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX),
 		    0, NULL);
 
-		 /*
-		  * XXX: Currently HW layer operates only in 1Gbps mode so set
-		  *      it here as a default and set AUTO in the future.
-		  */
-		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_1000_T | IFM_FDX));
+		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX));
+
+	} else if (sc->phy_conn_type == PHY_CONN_XGMII) {
+		ifmedia_init(&sc->ifmedia, IFM_IMASK, xge_xgmac_media_change,
+		    xge_xgmac_media_status);
+		/*
+		 * 10G available. Full duplex only.
+		 */
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_10G_LR | IFM_FDX),
+		    0, NULL);
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_10G_SR | IFM_FDX),
+		    0, NULL);
+		ifmedia_add(&sc->ifmedia, (IFM_ETHER | IFM_AUTO | IFM_FDX),
+		    0, NULL);
+
+		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_10G_SR | IFM_FDX));
 	}
 
 	ether_ifattach(ifp, sc->hwaddr);
@@ -386,7 +456,7 @@ xge_attach(device_t dev)
 	return (0);
 }
 
-static int
+int
 xge_detach(device_t dev)
 {
 	struct xge_softc *sc;
@@ -432,7 +502,8 @@ xge_detach(device_t dev)
 			device_delete_child(dev, sc->miibus);
 		bus_generic_detach(dev);
 		break;
-	case PHY_CONN_SGMII:
+	case PHY_CONN_SGMII: /* fall through */
+	case PHY_CONN_XGMII:
 		/* Remove all ifmedia configurations */
 		ifmedia_removeall(&sc->ifmedia);
 		break;
@@ -584,7 +655,9 @@ xge_mac_reset(struct xge_softc *sc)
 {
 	struct xgene_enet_pdata *pdata = &sc->pdata;
 
+	XGE_SGMAC_LOCK(sc);
 	pdata->mac_ops->reset(pdata);
+	XGE_SGMAC_UNLOCK(sc);
 }
 
 /*****************************************************************************
@@ -970,12 +1043,12 @@ xge_create_desc_rings(struct xge_softc *sc)
 	uint8_t cpu_bufnum, eth_bufnum, bp_bufnum;
 	int err = 0;
 
-	cpu_bufnum = 0;
-	eth_bufnum = START_ETH_BUFNUM;
-	bp_bufnum = START_BP_BUFNUM;
-	buf_pool = NULL;
+	cpu_bufnum = pdata->cpu_bufnum;
+	eth_bufnum = pdata->eth_bufnum;
+	bp_bufnum = pdata->bp_bufnum;
+	ring_num = pdata->ring_num;
 
-	ring_num = START_RING_NUM;
+	buf_pool = NULL;
 
 	/* Allocate Rx descriptor ring (work queue) */
 	ring_id = xge_get_ring_id(RING_OWNER_CPU, cpu_bufnum);
@@ -1775,9 +1848,13 @@ xge_miibus_statchg(device_t dev)
 		break;
 	}
 
-	mac_ops->init(pdata);
-	mac_ops->rx_enable(pdata);
-	mac_ops->tx_enable(pdata);
+	if (pdata->phy_speed != SPEED_UNKNOWN) {
+		xge_gmac_freq_set(pdata);
+
+		mac_ops->init(pdata);
+		mac_ops->rx_enable(pdata);
+		mac_ops->tx_enable(pdata);
+	}
 }
 
 static int
@@ -1813,12 +1890,44 @@ xge_gmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 	XGE_GLOBAL_UNLOCK(sc);
 }
 
+static void
+xge_gmac_freq_set(struct xgene_enet_pdata *pdata)
+{
+	struct xge_softc *sc;
+
+	sc = device_get_softc(pdata->ndev);
+
+	switch (pdata->phy_speed) {
+	case SPEED_1000:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x8);
+		break;
+	case SPEED_100:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x28);
+		break;
+	case SPEED_10:
+		bus_space_write_4(sc->ethclk_bst, sc->ethclk_bsh,
+		    SCU_ETHDIV_ADDR, 0x190);
+		break;
+	default:
+		/* Should not happen but... */
+		device_printf(pdata->ndev,
+		    "Trying to set unsupported speed on RGMII port: %d\n",
+		    pdata->phy_speed);
+		break;
+	}
+
+}
 /*****************************************************************************
  ****************************** Ifmedia **************************************
  *****************************************************************************/
 
+/*
+ * Same routine used by both sgmac and xgmac
+ */
 static boolean_t
-xge_sgmac_update_status_locked(struct ifnet *ifp)
+xge_sx_gmac_update_status_locked(struct ifnet *ifp)
 {
 	struct xge_softc *sc;
 	struct xgene_enet_pdata *pdata;
@@ -1831,12 +1940,15 @@ xge_sgmac_update_status_locked(struct ifnet *ifp)
 
 	XGE_GLOBAL_LOCK_ASSERT(sc);
 	link_was_up = sc->link_is_up;
-	link_is_up = !!xgene_enet_link_status(pdata);
+	link_is_up = !!mac_ops->link_state(pdata);
 
 	if (link_is_up) {
 		if (!link_was_up) {
 			if_link_state_change(ifp, LINK_STATE_UP);
+			XGE_SGMAC_LOCK(sc);
 			mac_ops->init(pdata);
+			XGE_SGMAC_UNLOCK(sc);
+
 			mac_ops->rx_enable(pdata);
 			mac_ops->tx_enable(pdata);
 		}
@@ -1858,13 +1970,67 @@ static void
 xge_sgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 {
 	struct xge_softc *sc;
+	struct xgene_enet_pdata *pdata;
+	sc = ifp->if_softc;
+	boolean_t link_is_up;
+
+	sc = ifp->if_softc;
+	pdata = &sc->pdata;
+
+	XGE_GLOBAL_LOCK(sc);
+	link_is_up = xge_sx_gmac_update_status_locked(ifp);
+
+	ifmr->ifm_status = IFM_AVALID;
+	ifmr->ifm_active = IFM_ETHER;
+
+	if (!link_is_up) {
+		XGE_GLOBAL_UNLOCK(sc);
+		return;
+	}
+
+	/* Device attached to working network */
+	ifmr->ifm_status |= IFM_ACTIVE;
+
+	switch (pdata->phy_speed) {
+	case SPEED_10:
+		ifmr->ifm_active |= IFM_10_T;
+		break;
+	case SPEED_100:
+		ifmr->ifm_active |= IFM_100_TX;
+		break;
+	case SPEED_1000:
+		ifmr->ifm_active |= IFM_1000_T;
+		break;
+	default:
+		ifmr->ifm_active |= IFM_AUTO;
+		break;
+	}
+
+	/* Always full duplex */
+	ifmr->ifm_active |= IFM_FDX;
+
+	XGE_GLOBAL_UNLOCK(sc);
+}
+
+static int
+xge_sgmac_media_change(struct ifnet *ifp __unused)
+{
+
+	/* XXX: We can't really change anything until HW layer allows that */
+	return (0);
+}
+
+static void
+xge_xgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
+{
+	struct xge_softc *sc;
 	sc = ifp->if_softc;
 	boolean_t link_is_up;
 
 	sc = ifp->if_softc;
 
 	XGE_GLOBAL_LOCK(sc);
-	link_is_up = xge_sgmac_update_status_locked(ifp);
+	link_is_up = xge_sx_gmac_update_status_locked(ifp);
 
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
@@ -1877,10 +2043,10 @@ xge_sgmac_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 }
 
 static int
-xge_sgmac_media_change(struct ifnet *ifp __unused)
+xge_xgmac_media_change(struct ifnet *ifp __unused)
 {
 
-	/* XXX: We can't really change anything until HW layer allows that */
+	/* Not needed since we operate in 10G mode only */
 	return (0);
 }
 
@@ -1933,8 +2099,9 @@ xge_tick(void *arg)
 		mii_sc = device_get_softc(sc->miibus);
 		mii_tick(mii_sc);
 		break;
-	case PHY_CONN_SGMII:
-		xge_sgmac_update_status_locked(ifp);
+	case PHY_CONN_SGMII: /* fall through */
+	case PHY_CONN_XGMII:
+		xge_sx_gmac_update_status_locked(ifp);
 		break;
 	default:
 		panic("%s: callout from unsupported port type", __func__);
@@ -1994,7 +2161,7 @@ error:
 	return (err);
 }
 
-static void
+static int
 xge_setup_ops(struct xge_softc *sc)
 {
 	struct xgene_enet_pdata *pdata = &sc->pdata;
@@ -2010,16 +2177,38 @@ xge_setup_ops(struct xge_softc *sc)
 		pdata->port_ops = &xgene_sgport_ops;
 		pdata->rm = RM1;
 		break;
-	default:
-#if 0
+	case PHY_CONN_XGMII:
 		pdata->mac_ops = &xgene_xgmac_ops;
 		pdata->port_ops = &xgene_xgport_ops;
 		pdata->rm = RM0;
-#else
-		panic("unsupported connection type");
-#endif
 		break;
+	default:
+		device_printf(sc->dev, "Unsupported connection type");
+		return (ENXIO);
 	}
+
+	switch (pdata->port_id) {
+	case 0:
+		pdata->cpu_bufnum = START_CPU_BUFNUM_0;
+		pdata->eth_bufnum = START_ETH_BUFNUM_0;
+		pdata->bp_bufnum = START_BP_BUFNUM_0;
+		pdata->ring_num = START_RING_NUM_0;
+		break;
+	case 1:
+		pdata->cpu_bufnum = START_CPU_BUFNUM_1;
+		pdata->eth_bufnum = START_ETH_BUFNUM_1;
+		pdata->bp_bufnum = START_BP_BUFNUM_1;
+		pdata->ring_num = START_RING_NUM_1;
+		break;
+	default:
+		device_printf(sc->dev, "Unsupported %s port ID: %d\n",
+		    (sc->phy_conn_type == PHY_CONN_RGMII) ? "RGMII" :
+		    (sc->phy_conn_type == PHY_CONN_SGMII) ? "SGMII" : "XGMII",
+		    pdata->port_id);
+		return (ENXIO);
+	}
+
+	return (0);
 }
 
 /*****************************************************************************

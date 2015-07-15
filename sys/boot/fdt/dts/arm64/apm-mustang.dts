@@ -48,6 +48,10 @@
 	status = "ok";
 };
 
+&xgenet {
+	status = "ok";
+};
+
 &sata2 {
 	status = "ok";
 };

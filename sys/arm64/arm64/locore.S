@@ -185,19 +185,19 @@ mp_virtdone:
 	 * Result is passed to init_secondary in x0.
 	 */
 	ldr	x20, =mp_allcpus
-	ldr	x20, [x20]
+	ldr	w20, [x20]
 	ldr	x21, =mp_cpu_sockets
-	ldr	x21, [x21]
+	ldr	w21, [x21]
 	ldr	x22, =mp_cpu_clusters
-	ldr	x22, [x22]
-	sdiv	x23, x20, x21	/* x23 = cpus_per_socket */
-	sdiv	x24, x23, x22	/* x24 = cpus_per_cluster */
+	ldr	w22, [x22]
+	sdiv	w23, w20, w21	/* w23 = cpus_per_socket */
+	sdiv	w24, w23, w22	/* w24 = cpus_per_cluster */
 	mrs	x9, mpidr_el1
-	ubfx	x10, x9, #0, #8		/* x10 = Aff0 */
-	ubfx	x11, x9, #8, #8		/* x11 = Aff1 */
-	ubfx	x12, x9, #16, #8	/* x12 = Aff2 */
-	madd	x0, x11, x24, x10
-	madd	x0, x12, x23, x0	/* x0 = cpuid */
+	ubfx	w10, w9, #0, #8		/* w10 = Aff0 */
+	ubfx	w11, w9, #8, #8		/* w11 = Aff1 */
+	ubfx	w12, w9, #16, #8	/* w12 = Aff2 */
+	madd	w0, w11, w24, w10
+	madd	w0, w12, w23, w0	/* w0 = cpuid */
 #endif
 
 	/* Calculate offset in secondary_stacks for this CPU */

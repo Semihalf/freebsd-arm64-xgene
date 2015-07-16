@@ -72,8 +72,8 @@ options 	INCLUDE_CONFIG_FILE     # Include this file in kernel
 options 	VFP			# Floating-point support
 options		SMP			# Symmetric MultiProcessing support
 
-# Mount root from USB stick partition da0s2a by default
-options 	ROOTDEVNAME=\"ufs:da0\"
+# Mount root from SATA drive partition ada0p2 by default
+options 	ROOTDEVNAME=\"ufs:ada0p2\"
 
 # Debugging support.  Always need this:
 #options 	KDB			# Enable kernel debugger support.

@@ -104,15 +104,6 @@ generic_bs_subregion(void *t, bus_space_handle_t bsh, bus_size_t offset,
 	return (0);
 }
 
-static int
-generic_bs_subregion(void *t, bus_space_handle_t bsh, bus_size_t offset,
-    bus_size_t size, bus_space_handle_t *nbshp)
-{
-
-	*nbshp = bsh + offset;
-	return (0);
-}
-
 struct bus_space memmap_bus = {
 	/* cookie */
 	.bs_cookie = NULL,

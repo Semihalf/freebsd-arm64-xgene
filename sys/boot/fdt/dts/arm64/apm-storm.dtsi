@@ -377,6 +377,70 @@
 				reg-names = "csr-reg";
 				clock-output-names = "pcie4clk";
 			};
+			
+			spi0clk: spi0clk@1f2ac000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&apbclk 0>;
+				reg = <0x0 0x1f2ac000 0x0 0x1000>;
+				reg-names = "csr-reg";
+				csr-offset = <0x0>;
+				csr-mask = <0x100>;
+				enable-offset = <0x8>;
+				enable-mask = <0x100>;
+				clock-output-names = "spi0clk";
+			};
+
+			sdioclk: sdioclk@1f2ac000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&socplldiv2 0>;
+				reg = <0x0 0x1f2ac000 0x0 0x1000
+					0x0 0x17000000 0x0 0x2000>;
+				reg-names = "csr-reg", "div-reg";
+				csr-offset = <0x0>;
+				csr-mask = <0x2>;
+				enable-offset = <0x8>;
+				enable-mask = <0x2>;
+				divider-offset = <0x178>;
+				divider-width = <0x8>;
+				divider-shift = <0x0>;
+				clock-output-names = "sdioclk";
+			};
+
+			apbclk: apbclk@1f2ac000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&ahbclk 0>;
+				reg = <0x0 0x1f2ac000 0x0 0x1000
+					0x0 0x1f2ac000 0x0 0x1000>;
+				reg-names = "csr-reg", "div-reg";
+				csr-offset = <0x0>;
+				csr-mask = <0x200>;
+				enable-offset = <0x8>;
+				enable-mask = <0x200>;
+				divider-offset = <0x10>;
+				divider-width = <0x2>;
+				divider-shift = <0x0>;
+				clock-output-names = "apbclk";
+			};
+
+			ahbclk: ahbclk@1f2ac000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&socplldiv2 0>;
+				reg = <0x0 0x1f2ac000 0x0 0x1000
+					0x0 0x17000000 0x0 0x2000>;
+				reg-names = "csr-reg", "div-reg";
+				csr-offset = <0x0>;
+				csr-mask = <0x1>;
+				enable-offset = <0x8>;
+				enable-mask = <0x1>;
+				divider-offset = <0x164>;
+				divider-width = <0x5>;
+				divider-shift = <0x0>;
+				clock-output-names = "ahbclk";
+			};
 		};
 
 		msi: msi@79000000 {
@@ -754,5 +818,29 @@
 			interrupts = <0x0 0x41 0x4>;
 			clocks = <&rngpkaclk 0>;
 		};
+
+		spi0: spi@1c025000 {
+			status = "disabled";
+			device_type = "spi";
+			compatible = "apm,xgene-spi";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x0 0x1c025000 0x0 0x1000>;
+			bus_num = <0>;
+			#clock-cells = <1>;
+			clocks = <&spi0clk 0>;
+		};
+		
+		sdhc0: sdhc@1c000000 {
+			status = "disabled";
+			device_type = "sdhc";
+			compatible = "apm,xgene-sdhci";
+			reg = <0x0 0x1c000000 0x0 0x100>,
+			      <0x0 0x1f2a0000 0x0 0x1000>;
+			interrupts = <0x0 0x49 0x4>;
+			#clock-cells = <1>;
+			clocks = <&sdioclk 0>;
+		};
+
 	};
 };

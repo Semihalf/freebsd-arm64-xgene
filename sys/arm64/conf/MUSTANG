@@ -131,7 +131,6 @@ device		inet
 # Note that 'bpf' is required for DHCP.
 device		bpf		# Berkeley packet filter
 
-device		psci		# Support for ARM PSCI
 options 	FDT
 options 	FDT_CLOCK
 options 	FDT_DTB_STATIC

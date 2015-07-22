@@ -105,7 +105,6 @@ device		firmware	# firmware assist module
 # Note that 'bpf' is required for DHCP.
 device		bpf		# Berkeley packet filter
 
-device		psci		# Support for ARM PSCI
 options 	FDT
 options 	FDT_DTB_STATIC
 makeoptions 	FDT_DTS_FILE=apm-mustang.dts

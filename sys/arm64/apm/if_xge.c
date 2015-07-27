@@ -124,6 +124,11 @@ do {									\
 #define	XGE_TX_DONE_TH			15	/* Free Tx mbufs after this much
 						   transmitted */
 
+/* Multiple of Tx slots for Tx SW completion ring */
+#define	XGE_TX_MBUFS_MULT		8
+/* Multiple of Rx slots for Rx SW completion ring */
+#define	XGE_RX_MBUFS_MULT		8
+
 MALLOC_DEFINE(M_XGE, "xge", "X-Gene ENET dynamic memory");
 
 extern int xgene_mii_phy_read(struct xgene_enet_pdata *, uint8_t, uint32_t);
@@ -361,13 +366,13 @@ xge_attach(device_t dev)
 		return (err);
 	}
 
-	/* Allocate software completion ring for Rx mbufs */
-	sc->rx_mbufs = buf_ring_alloc(pdata->rx_ring->slots, M_XGE, M_WAITOK,
-	    &sc->globl_mtx);
+	/* Allocate software completion ring for Rx mbufs. */
+	sc->rx_mbufs = buf_ring_alloc(pdata->rx_ring->slots * XGE_RX_MBUFS_MULT,
+	    M_XGE, M_WAITOK, &sc->globl_mtx);
 
-	/* Allocate software completion ring for Tx mbufs */
-	sc->tx_mbufs = buf_ring_alloc(pdata->tx_ring->slots, M_XGE, M_WAITOK,
-	    &sc->globl_mtx);
+	/* Allocate software completion ring for Tx mbufs. */
+	sc->tx_mbufs = buf_ring_alloc(pdata->tx_ring->slots * XGE_TX_MBUFS_MULT,
+	    M_XGE, M_WAITOK, &sc->globl_mtx);
 
 	/* Allocate and set up the ethernet interface. */
 	sc->ifp = ifp = if_alloc(IFT_ETHER);
@@ -1676,8 +1681,16 @@ xge_tx_completion(struct xgene_enet_desc_ring *cp_ring,
 	 * Enqueue already transmitted mbuf to the
 	 * software completion queue for further processing.
 	 */
-	if (__predict_false(buf_ring_enqueue(sc->tx_mbufs, mb) != 0))
-		panic("XGE can't enqueue element to SW Tx completion ring");
+	if (__predict_false(buf_ring_enqueue(sc->tx_mbufs, mb) != 0)) {
+		/*
+		 * Cannot postpone this action for later. Free the mbuf now.
+		 * Disable watchdog if everything is transmitted.
+		 */
+		m_free(mb);
+		sc->tx_enq_num--;
+		if (sc->tx_enq_num == 0)
+			sc->wd_timeout = 0;
+	}
 
 	status = GET_VAL(LERR, le64toh(raw_desc->m0));
 	if (status >= XGE_MSG_LERR_FIRST) {
@@ -1752,8 +1765,14 @@ xge_rx_completion(struct xgene_enet_desc_ring *rx_ring,
 	 * Enqueue received mbuf to the
 	 * software completion queue for further processing.
 	 */
-	if (__predict_false(buf_ring_enqueue(sc->rx_mbufs, mb) != 0))
-		panic("XGE can't enqueue element to SW Rx completion ring");
+	if (__predict_false(buf_ring_enqueue(sc->rx_mbufs, mb) != 0)) {
+		/*
+		 * Not enough Rx slots in software ring.
+		 * Discard this packet.
+		 */
+		if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+		goto out;
+	}
 
 	status = GET_VAL(LERR, le64toh(raw_desc->m0));
 	if (status >= XGE_MSG_LERR_FIRST) {

@@ -1761,6 +1761,8 @@ xge_rx_completion(struct xgene_enet_desc_ring *rx_ring,
 	if (mb == NULL)
 		panic("%s: Rx descriptor bound to NULL mbuf", __func__);
 
+	/* Set the proper amount of data in this mbuf */
+	mb->m_len = GET_VAL(BUFDATALEN, le64toh(raw_desc->m1));
 	/*
 	 * Enqueue received mbuf to the
 	 * software completion queue for further processing.

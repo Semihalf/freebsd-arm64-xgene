@@ -9,8 +9,8 @@
 #define	XGENE_I2C_TIMEOUT				20		/* ms */
 #define	XGENE_I2C_STAT_WAIT_RET			5		/* clk tics	*/
 #define	XGENE_I2C_STOP_TIMEOUT			10
-#define	XGENE_I2C_TX_RX_TIMEOUT			10
-#define XGENE_I2C_TX_RX_TIMEOUT_RST		40
+#define	XGENE_I2C_TX_RX_TIMEOUT			40
+#define XGENE_I2C_TX_RX_TIMEOUT_RST		160
 #define	XGENE_I2C_DELAY_IF_BUSY			1000	/* ms */
 #define	XGENE_I2C_DELAY_AFT_START		800		/* ms */
 #define	XGENE_I2C_REG_RID				0		/* Resource ID */

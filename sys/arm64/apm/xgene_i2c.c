@@ -3,7 +3,6 @@
  * All rights reserved.
  *
  * Developed by Semihalf.
- * Author: Marcin Mazurek <mma@semihalf.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -95,14 +94,14 @@ DRIVER_MODULE(i2c, simplebus, i2c_driver, i2c_devclass, 0, 0);
 DRIVER_MODULE(iicbus, i2c, iicbus_driver, iicbus_devclass, 0, 0);
 MODULE_DEPEND(i2c, iicbus, 1, 1, 1);
 
-static int
+static __inline int
 xgene_i2c_reg_read(i2c_softc_t *sc, uint32_t reg)
 {
 
 	return (bus_read_4(sc->mem_res, reg));
 }
 
-static void
+static __inline void
 xgene_i2c_reg_write(i2c_softc_t *sc, uint32_t reg, uint32_t data)
 {
 
@@ -191,17 +190,17 @@ xgene_i2c_wait_for_flag(i2c_softc_t *sc)
 	status = xgene_i2c_reg_read(sc, XGENE_I2C_TX_ABRT_SRC);
 
 	/* Check source of error */
-	if (status & XGENE_I2C_TX_ABRT_SRC_NOACK7) {
+	if ((status & XGENE_I2C_TX_ABRT_SRC_NOACK7) != 0) {
 		status = IIC_ENOACK;
 		goto finish;
 	}
 
-	if (status & XGENE_I2C_TX_ABRT_SRC_SBTACK) {
+	if ((status & XGENE_I2C_TX_ABRT_SRC_SBTACK) != 0) {
 		status = IIC_EBUSERR;
 		goto finish;
 	}
 
-	if (status & XGENE_I2C_TX_ABRT_SRC_ARBLOST) {
+	if ((status & XGENE_I2C_TX_ABRT_SRC_ARBLOST) != 0) {
 		status = IIC_EBUSERR;
 		goto finish;
 	}
@@ -218,13 +217,15 @@ finish:
 static void
 xgene_i2c_init(i2c_softc_t *sc)
 {
-	uint32_t config, rx_buffer, tx_buffer, param, hcnt, lcnt;
+	uint32_t config, i2c_en, rx_buffer, tx_buffer, param, hcnt, lcnt;
 
 	mtx_lock(&sc->mutex);
 
 	/* Disable the controller */
-	if (xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE & (~XGENE_I2C_ENABLE_EN));
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) != 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en & (~XGENE_I2C_ENABLE_EN)));
 	}
 
 	/* Config buffer lenghts */
@@ -273,22 +274,25 @@ xgene_i2c_init(i2c_softc_t *sc)
 			XGENE_I2C_CON_REST_EN | XGENE_I2C_CON_SD;
 
 	/* Set speed mode */
-	if ((XGENE_I2C_BUS_SPEED >= 0)
-			&& (XGENE_I2C_BUS_SPEED <= XGENE_I2C_MAX_STANDARD_SPEED)) {
+	if ((XGENE_I2C_BUS_SPEED >= 0) &&
+	    (XGENE_I2C_BUS_SPEED <= XGENE_I2C_MAX_STANDARD_SPEED)) {
 		config |= XGENE_I2C_CON_MSM_S;
 		i2c_conf.sclk_t = xgene_i2c_sclk_t[I2C_SS];
 	}
 
-	else if ((XGENE_I2C_BUS_SPEED > XGENE_I2C_MAX_STANDARD_SPEED)
-			&& (XGENE_I2C_BUS_SPEED <= XGENE_I2C_MAX_FAST_SPEED)) {
+	else if ((XGENE_I2C_BUS_SPEED > XGENE_I2C_MAX_STANDARD_SPEED) &&
+	    (XGENE_I2C_BUS_SPEED <= XGENE_I2C_MAX_FAST_SPEED)) {
 		config |= XGENE_I2C_CON_MSM_F;
 		i2c_conf.sclk_t = xgene_i2c_sclk_t[I2C_FS];
 	}
 
 	xgene_i2c_reg_write(sc, XGENE_I2C_CON, config);
+
 	/* Enable the controller */
-	if ((xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) == 0) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE_EN);
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) == 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en | XGENE_I2C_ENABLE_EN));
 	}
 
 	mtx_unlock(&sc->mutex);
@@ -318,8 +322,8 @@ xgene_i2c_attach(device_t dev)
 	sc->dev = dev;
 	/* Allocate memory */
 	rid = XGENE_I2C_REG_RID;
-	sc->mem_res = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
-			&rid, RF_ACTIVE);
+	sc->mem_res = bus_alloc_resource_any(dev,
+	    SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (sc->mem_res == NULL) {
 		device_printf(dev, "Unable to allocate resource\n");
 		xgene_i2c_detach(dev);
@@ -410,7 +414,7 @@ xgene_i2c_repeated_start(device_t dev __unused, u_char slave __unused,
 static int
 xgene_i2c_start(device_t dev, u_char slave, int timeout __unused)
 {
-	uint32_t status;
+	uint32_t status, i2c_en;
 	int error;
 	i2c_softc_t *sc  = device_get_softc(dev);
 
@@ -425,10 +429,13 @@ xgene_i2c_start(device_t dev, u_char slave, int timeout __unused)
 
 	/* Set start condition */
 
-	/* Disable controller */
-	if (xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE & (~XGENE_I2C_ENABLE_EN));
+	/* Disable the controller */
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) != 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en & (~XGENE_I2C_ENABLE_EN)));
 	}
+
 	/* Ensure that mode settings are correct */
 	status = xgene_i2c_reg_read(sc, XGENE_I2C_CON);
 	if (((status & XGENE_I2C_CON_MM) && (status & XGENE_I2C_CON_SD)) == 0) {
@@ -442,11 +449,13 @@ xgene_i2c_start(device_t dev, u_char slave, int timeout __unused)
 	/* Clear all interrupts */
 	xgene_i2c_reg_read(sc, XGENE_I2C_CLR_I);
 	/* Enable the controller */
-	if ((xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) == 0) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE_EN);
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) == 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en | XGENE_I2C_ENABLE_EN));
 	}
 	/* Write data direction */
-	if (CHECK_CMD_READ(slave))
+	if (CHECK_CMD_READ(slave) != 0)
 		xgene_i2c_reg_write(sc, XGENE_I2C_DATA_CMD, READ_DIRECTION);  /*read*/
 	else
 		xgene_i2c_reg_write(sc, XGENE_I2C_DATA_CMD, WRITE_DIRECTION); /*write*/
@@ -471,10 +480,11 @@ xgene_i2c_stop(device_t dev)
 	 */
 	i2c_softc_t *sc = device_get_softc(dev);
 	if (xgene_i2c_reg_read(sc, XGENE_I2C_RXFLR) == 0) {
-		if (xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) & XGENE_I2C_RAW_INTR_STOP) {
+		if ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+		    XGENE_I2C_RAW_INTR_STOP) != 0)
 			return (IIC_NOERR);
-		}
 	}
+
 	return (IIC_EBUSERR);
 }
 
@@ -482,7 +492,7 @@ static int
 xgene_i2c_reset(device_t dev, u_char speed, u_char addr,
     u_char *oldadr __unused)
 {
-	uint32_t state;
+	uint32_t state, i2c_en;
 	uint8_t baud_rate;
 	ssize_t timeout;
 	i2c_softc_t *sc = device_get_softc(dev);
@@ -505,9 +515,10 @@ xgene_i2c_reset(device_t dev, u_char speed, u_char addr,
 
 	mtx_lock(&sc->mutex);
 	/* If controller is inactive carelessly apply configuration */
-	if (xgene_i2c_reg_read(sc, XGENE_I2C_STATUS) & XGENE_I2C_STATUS_ACTIVITY) {
-		while (!(xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
-		    XGENE_I2C_RAW_INTR_STOP)) {
+	if ((xgene_i2c_reg_read(sc, XGENE_I2C_STATUS) &
+	    XGENE_I2C_STATUS_ACTIVITY) != 0) {
+		while ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+		    XGENE_I2C_RAW_INTR_STOP) == 0) {
 			if (timeout < 0) {
 				mtx_unlock(&sc->mutex);
 				return (IIC_EBUSBSY);
@@ -517,10 +528,11 @@ xgene_i2c_reset(device_t dev, u_char speed, u_char addr,
 			timeout--;
 		}
 	}
-
 	/* Disable the controller */
-	if (xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE & (~XGENE_I2C_ENABLE_EN));
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) != 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en & (~XGENE_I2C_ENABLE_EN)));
 	}
 	/* Setup new baudrate */
 	state = xgene_i2c_reg_read(sc, XGENE_I2C_CON);
@@ -531,8 +543,10 @@ xgene_i2c_reset(device_t dev, u_char speed, u_char addr,
 	xgene_i2c_reg_write(sc, XGENE_I2C_TAR, XGENE_I2C_TAR_SPECIAL |
 	    XGENE_I2C_TAR_START | GET_SLAVE_ADDRESS(addr));
 	/* Enable the controller */
-	if ((xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE) & XGENE_I2C_ENABLE_EN) == 0) {
-		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE, XGENE_I2C_ENABLE_EN);
+	i2c_en = xgene_i2c_reg_read(sc, XGENE_I2C_ENABLE);
+	if ((i2c_en & XGENE_I2C_ENABLE_EN) == 0) {
+		xgene_i2c_reg_write(sc, XGENE_I2C_ENABLE,
+		    (i2c_en | XGENE_I2C_ENABLE_EN));
 	}
 
 	mtx_unlock(&sc->mutex);
@@ -554,12 +568,11 @@ xgene_i2c_read(device_t dev, char *buf, int len, int *read, int last __unused,
 
 	while (*read < len) {
 		timeout = XGENE_I2C_TX_RX_TIMEOUT;
-
 		/* Wait for data in RX buffer */
 		do {
 			reg = xgene_i2c_reg_read(sc, XGENE_I2C_RXFLR);
-			if ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR)
-			    & XGENE_I2C_RAW_INTR_TX_ABRT) || timeout < 0) {
+			if (((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+			    XGENE_I2C_RAW_INTR_TX_ABRT) != 0) || timeout < 0) {
 				mtx_unlock(&sc->mutex);
 				return (IIC_EBUSERR);
 			}
@@ -591,10 +604,10 @@ xgene_i2c_write(device_t dev, const char *buf, int len, int *sent,
 	while (*sent < len) {
 		/* Send a data */
 		xgene_i2c_reg_write(sc, XGENE_I2C_DATA_CMD, ((*buf++) & MASK_8_BITS));
-		/* Wait for acknowledge from slave */
+		/* Check for errors */
 		while (timeout > 0) {
-			if (xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
-			    XGENE_I2C_RAW_INTR_TX_ABRT) {
+			if ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+			    XGENE_I2C_RAW_INTR_TX_ABRT) != 0) {
 				status = IIC_EBUSERR;
 				mtx_unlock(&sc->mutex);
 				return (status);

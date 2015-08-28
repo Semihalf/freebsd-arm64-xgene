@@ -602,23 +602,25 @@ xgene_i2c_write(device_t dev, const char *buf, int len, int *sent,
 	mtx_lock(&sc->mutex);
 
 	while (*sent < len) {
-		/* Send a data */
-		xgene_i2c_reg_write(sc, XGENE_I2C_DATA_CMD, ((*buf++) & MASK_8_BITS));
-		/* Check for errors */
-		while (timeout > 0) {
-			if ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
-			    XGENE_I2C_RAW_INTR_TX_ABRT) != 0) {
-				status = IIC_EBUSERR;
-				mtx_unlock(&sc->mutex);
-				return (status);
-			}
-
+		/* 
+		 * Check status register and send data if the transmit 
+		 * buffer is at or below the threshold value  
+		 */		
+		status = (xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+		    MASK_STATUS_DATA);
+		if ((status & XGENE_I2C_RAW_INTR_TX_EMPT) != 0) {
+			xgene_i2c_reg_write(sc, XGENE_I2C_DATA_CMD,
+			    ((*buf++) & MASK_CMD_DATA));
+		} else
 			DELAY(i2c_conf.sclk_t);
-			timeout--;
-		}
-
 		(*sent)++;
 	}
+	if ((xgene_i2c_reg_read(sc, XGENE_I2C_RAW_INTR) &
+	    XGENE_I2C_RAW_INTR_TX_ABRT) != 0) {
+		mtx_unlock(&sc->mutex);
+		return (IIC_EBUSERR);
+	}
+
 	error = xgene_i2c_wait_for_stop(sc);
 	mtx_unlock(&sc->mutex);
 

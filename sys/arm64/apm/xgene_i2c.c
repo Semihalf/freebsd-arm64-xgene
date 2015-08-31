@@ -582,7 +582,7 @@ xgene_i2c_read(device_t dev, char *buf, int len, int *read, int last __unused,
 
 		(*read)++;
 	}
-	*buf++ = (xgene_i2c_reg_read(sc, XGENE_I2C_DATA_CMD) & MASK_8_BITS);
+	*buf++ = (xgene_i2c_reg_read(sc, XGENE_I2C_DATA_CMD) & MASK_CMD_DATA);
 	status = xgene_i2c_wait_for_stop(sc);
 	mtx_unlock(&sc->mutex);
 

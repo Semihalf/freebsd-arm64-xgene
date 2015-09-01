@@ -16,9 +16,6 @@
 #define	XGENE_I2C_REG_RID				0		/* Resource ID */
 #define	XGENE_I2C_CLOCK_PRESC			1000	/* Clock prescaler */
 
-/* Mask */
-#define MASK_8_BITS						0xFF
-
 /* Registers */
 #define	XGENE_I2C_CON					0x00	/* Control register */
 #define	XGENE_I2C_CON_MM				0x01	/* Master mode			*/
@@ -39,6 +36,7 @@
 #define	XGENE_I2C_DATA_CMD 				0x10	/* Data to read/write register */
 #define	READ_DIRECTION					0x100
 #define	WRITE_DIRECTION					0x0
+#define	MASK_CMD_DATA					0xFF
 #define	CHECK_CMD_READ(x)				((x) & 0x1)
 
 #define	XGENE_I2C_STATUS 				0x70	/* Status register */
@@ -51,6 +49,8 @@
 #define	XGENE_I2C_RAW_INTR_TX_ABRT		0x40
 #define	XGENE_I2C_RAW_INTR_STOP			0x200
 #define	XGENE_I2C_RAW_INTR_START		0x400
+#define XGENE_I2C_RAW_INTR_TX_EMPT		0x10
+#define MASK_STATUS_DATA			0xFFF
 
 #define	XGENE_I2C_TXFLR					0x74 	/* Number of data in transmit FIFO */
 #define	XGENE_I2C_RXFLR					0x78 	/* Number of data in receive FIFO */

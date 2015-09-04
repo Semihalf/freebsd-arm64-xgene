@@ -106,6 +106,9 @@ device		ch
 
 device		ahci
 
+device		iic
+device		iicbus
+
 # Networking
 device		xge
 device		mii

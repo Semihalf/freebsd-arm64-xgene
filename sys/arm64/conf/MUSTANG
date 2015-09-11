@@ -112,6 +112,7 @@ device		iicbus
 # Networking
 device		xge
 device		mii
+device		if_bridge
 
 # Pseudo devices.
 device		loop		# Network loopback

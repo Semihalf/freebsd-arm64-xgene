@@ -1267,19 +1267,12 @@ ithread_execute_handlers(struct proc *p, struct intr_event *ie)
 	 */
 	if (intr_storm_threshold != 0 && ie->ie_count >= intr_storm_threshold &&
 	    !(ie->ie_flags & IE_SOFT)) {
-		/*
-		 * XXX: Temporarily disable verbose output on interrupt storm.
-		 *      We expect tons of interrupts when overloading network
-		 *      so this message gives us nothing.
-		 */
-#if 0
 		/* Report the message only once every second. */
 		if (ppsratecheck(&ie->ie_warntm, &ie->ie_warncnt, 1)) {
 			printf(
 	"interrupt storm detected on \"%s\"; throttling interrupt source\n",
 			    ie->ie_name);
 		}
-#endif
 		pause("istorm", 1);
 	} else
 		ie->ie_count++;

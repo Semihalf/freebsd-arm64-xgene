@@ -96,6 +96,7 @@ static int nexus_setup_intr(device_t dev, device_t child, struct resource *res,
     int flags, driver_filter_t *filt, driver_intr_t *intr, void *arg, void **cookiep);
 static int nexus_teardown_intr(device_t, device_t, struct resource *, void *);
 static int nexus_unmask_intr(device_t, device_t, struct resource *);
+static int nexus_mask_intr(device_t, device_t, struct resource *);
 #ifdef SMP
 static int nexus_bind_intr(device_t, device_t, struct resource *, int);
 #endif
@@ -119,6 +120,7 @@ static device_method_t nexus_methods[] = {
 	DEVMETHOD(bus_setup_intr,	nexus_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	nexus_teardown_intr),
 	DEVMETHOD(bus_unmask_intr,		nexus_unmask_intr),
+	DEVMETHOD(bus_mask_intr,		nexus_mask_intr),
 #ifdef SMP
 	DEVMETHOD(bus_bind_intr,	nexus_bind_intr),
 #endif
@@ -273,6 +275,18 @@ nexus_unmask_intr(device_t dev, device_t child, struct resource *res)
 		return (EINVAL);
 
 	arm_unmask_irq(rman_get_start(res));
+
+	return (0);
+}
+
+static int
+nexus_mask_intr(device_t dev, device_t child, struct resource *res)
+{
+
+	if (res == NULL)
+		return (EINVAL);
+
+	arm_mask_irq(rman_get_start(res));
 
 	return (0);
 }

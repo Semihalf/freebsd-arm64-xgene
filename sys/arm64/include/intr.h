@@ -47,6 +47,7 @@ int	arm_setup_intr(const char *, driver_filter_t *, driver_intr_t,
 int	arm_teardown_intr(void *);
 int	arm_bind_intr(u_int, u_char);
 void	arm_unmask_irq(u_int);
+void	arm_mask_irq(u_int);
 
 #ifdef SMP
 void	arm_init_secondary(void);

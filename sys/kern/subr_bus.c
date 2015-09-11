@@ -3940,6 +3940,23 @@ bus_generic_unmask_intr(device_t dev, device_t child, struct resource *irq)
 }
 
 /**
+ * @brief Helper function for implementing BUS_MASK_INTR().
+ *
+ * This simple implementation of BUS_MASK_INTR() simply calls the
+ * BUS_MASK_INTR() method of the parent of @p dev.
+ */
+int
+bus_generic_mask_intr(device_t dev, device_t child, struct resource *irq)
+{
+
+	/* Propagate up the bus hierarchy until someone handles it. */
+	if (dev->parent)
+		return (BUS_MASK_INTR(dev->parent, child, irq));
+
+	return (EINVAL);
+}
+
+/**
  * @brief Helper function for implementing BUS_TEARDOWN_INTR().
  *
  * This simple implementation of BUS_TEARDOWN_INTR() simply calls the
@@ -4407,6 +4424,27 @@ bus_unmask_intr(device_t dev, struct resource *r)
 		return (EINVAL);
 
 	error = BUS_UNMASK_INTR(dev->parent, dev, r);
+	if (error != 0)
+		return (error);
+
+	return (0);
+}
+
+/**
+ * @brief Wrapper function for BUS_MASK_INTR().
+ *
+ * This function simply calls the BUS_MASK_INTR() method of the
+ * parent of @p dev.
+ */
+int
+bus_mask_intr(device_t dev, struct resource *r)
+{
+	int error;
+
+	if (dev->parent == NULL)
+		return (EINVAL);
+
+	error = BUS_MASK_INTR(dev->parent, dev, r);
 	if (error != 0)
 		return (error);
 

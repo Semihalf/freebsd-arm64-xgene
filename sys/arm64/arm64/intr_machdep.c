@@ -555,6 +555,13 @@ arm_unmask_irq(u_int irq)
 	PIC_UNMASK(root_pic, irq);
 }
 
+void
+arm_mask_irq(u_int irq)
+{
+
+	PIC_MASK(root_pic, irq);
+}
+
 #ifdef SMP
 void
 arm_setup_ipihandler(driver_filter_t *filt, u_int ipi)

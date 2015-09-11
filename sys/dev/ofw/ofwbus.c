@@ -118,6 +118,7 @@ static device_method_t ofwbus_methods[] = {
 	DEVMETHOD(bus_config_intr,	bus_generic_config_intr),
 	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
+	DEVMETHOD(bus_unmask_intr,	bus_generic_unmask_intr),
 	DEVMETHOD(bus_mask_intr,	bus_generic_mask_intr),
 
 	/* ofw_bus interface */

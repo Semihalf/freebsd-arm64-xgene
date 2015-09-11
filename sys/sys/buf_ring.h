@@ -77,10 +77,16 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	do {
 		prod_head = br->br_prod_head;
 		prod_next = (prod_head + 1) & br->br_prod_mask;
-		cons_tail = br->br_cons_tail;
+
+		/*
+		 * We synchronize with the release in
+		 * buf_ring_dequeue_{mc,sc}() to ensure that their load from
+		 * br_ring[cons_head] happens before our store to
+		 * br_ring[prod_head] in case cons_head equals prod_head.
+		 */
+		cons_tail = atomic_load_acq_32(&br->br_cons_tail);
 
 		if (prod_next == cons_tail) {
-			rmb();
 			if (prod_head == br->br_prod_head &&
 			    cons_tail == br->br_cons_tail) {
 				br->br_drops++;
@@ -89,7 +95,7 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 			}
 			continue;
 		}
-	} while (!atomic_cmpset_acq_int(&br->br_prod_head, prod_head, prod_next));
+	} while (!atomic_cmpset_32(&br->br_prod_head, prod_head, prod_next));
 #ifdef DEBUG_BUFRING
 	if (br->br_ring[prod_head] != NULL)
 		panic("dangling value in enqueue");
@@ -97,13 +103,16 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	br->br_ring[prod_head] = buf;
 
 	/*
-	 * If there are other enqueues in progress
-	 * that preceeded us, we need to wait for them
-	 * to complete 
+	 * If there are other enqueues in progress that preceeded us, then we
+	 * need to wait for them to complete.  We synchronize with the release
+	 * on br_prod_tail by the last of those enqueues to establish the
+	 * transitive release-acquire ordering between the earlier enqueue of
+	 * an item and that item's eventual dequeue.
 	 */   
-	while (br->br_prod_tail != prod_head)
+	while (atomic_load_acq_32(&br->br_prod_tail) != prod_head)
 		cpu_spinwait();
-	atomic_store_rel_int(&br->br_prod_tail, prod_next);
+
+	atomic_store_rel_32(&br->br_prod_tail, prod_next);
 	critical_exit();
 	return (0);
 }
@@ -123,11 +132,15 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 		cons_head = br->br_cons_head;
 		cons_next = (cons_head + 1) & br->br_cons_mask;
 
-		if (cons_head == br->br_prod_tail) {
+		/*
+		 * We synchronize with the release on br_prod_tail in
+		 * buf_ring_enqueue() so that ...
+		 */
+		if (cons_head == atomic_load_acq_32(&br->br_prod_tail)) {
 			critical_exit();
 			return (NULL);
 		}
-	} while (!atomic_cmpset_acq_int(&br->br_cons_head, cons_head, cons_next));
+	} while (!atomic_cmpset_32(&br->br_cons_head, cons_head, cons_next));
 
 	buf = br->br_ring[cons_head];
 #ifdef DEBUG_BUFRING
@@ -141,7 +154,7 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 	while (br->br_cons_tail != cons_head)
 		cpu_spinwait();
 
-	atomic_store_rel_int(&br->br_cons_tail, cons_next);
+	atomic_store_rel_32(&br->br_cons_tail, cons_next);
 	critical_exit();
 
 	return (buf);
@@ -162,8 +175,8 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 	uint32_t prod_tail;
 	void *buf;
 
-	cons_head = atomic_load_acq_32(&br->br_cons_head);
-	prod_tail = atomic_load_acq_32(&br->br_prod_tail);
+	cons_head = br->br_cons_head;
+	prod_tail = br->br_prod_tail;
 	
 	cons_next = (cons_head + 1) & br->br_cons_mask;
 #ifdef PREFETCH_DEFINED
@@ -191,7 +204,7 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 		panic("inconsistent list cons_tail=%d cons_head=%d",
 		    br->br_cons_tail, cons_head);
 #endif
-	br->br_cons_tail = cons_next;
+	atomic_store_rel_32(&br->br_cons_tail, cons_next);
 	return (buf);
 }
 
@@ -207,7 +220,12 @@ buf_ring_advance_sc(struct buf_ring *br)
 	uint32_t prod_tail;
 	
 	cons_head = br->br_cons_head;
-	prod_tail = br->br_prod_tail;
+
+	/*
+	 * We synchronize with the release on br_prod_tail in
+	 * buf_ring_enqueue() so that ... 
+	 */
+	prod_tail = atomic_load_acq_32(&br->br_prod_tail);
 	
 	cons_next = (cons_head + 1) & br->br_cons_mask;
 	if (cons_head == prod_tail) 
@@ -216,7 +234,7 @@ buf_ring_advance_sc(struct buf_ring *br)
 #ifdef DEBUG_BUFRING
 	br->br_ring[cons_head] = NULL;
 #endif
-	br->br_cons_tail = cons_next;
+	atomic_store_rel_32(&br->br_cons_tail, cons_next);
 }
 
 /*
@@ -251,21 +269,22 @@ buf_ring_putback_sc(struct buf_ring *br, void *new)
 static __inline void *
 buf_ring_peek(struct buf_ring *br)
 {
+	uint32_t cons_head;
 
 #ifdef DEBUG_BUFRING
 	if ((br->br_lock != NULL) && !mtx_owned(br->br_lock))
 		panic("lock not held on single consumer dequeue");
 #endif	
+	cons_head = br->br_cons_head;
+
 	/*
-	 * I believe it is safe to not have a memory barrier
-	 * here because we control cons and tail is worst case
-	 * a lagging indicator so we worst case we might
-	 * return NULL immediately after a buffer has been enqueued
+	 * We synchronize with the release on br_prod_tail in
+	 * buf_ring_enqueue() so that ...  
 	 */
-	if (br->br_cons_head == br->br_prod_tail)
+	if (cons_head == atomic_load_acq_32(&br->br_prod_tail))
 		return (NULL);
 	
-	return (br->br_ring[br->br_cons_head]);
+	return (br->br_ring[cons_head]);
 }
 
 static __inline int

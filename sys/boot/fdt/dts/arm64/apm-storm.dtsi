@@ -391,6 +391,19 @@
 				clock-output-names = "spi0clk";
 			};
 
+			spi1clk: spi1clk@1f2ac000 {
+				compatible = "apm,xgene-device-clock";
+				#clock-cells = <1>;
+				clocks = <&apbclk 0>;
+				reg = <0x0 0x1f2ac000 0x0 0x1000>;
+				reg-names = "csr-reg";
+				csr-offset = <0x0>;
+				csr-mask = <0x80>;
+				enable-offset = <0x8>;
+				enable-mask = <0x80>;
+				clock-output-names = "spi1clk";
+			};
+
 			sdioclk: sdioclk@1f2ac000 {
 				compatible = "apm,xgene-device-clock";
 				#clock-cells = <1>;
@@ -612,6 +625,21 @@
 					 0x0 0x0 0x0 0x4 &gic 0x0 0xdd 0x1>;
 			dma-coherent;
 			clocks = <&pcie4clk 0>;
+		};
+
+		dwgpio: dwgpio@1c024000 {
+			compatible = "snps,dw-apb-gpio";
+			reg = <0x0 0x1c024000 0x0 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg-io-width = <4>;
+
+			porta: gpio-controller@0 {
+			compatible = "snps,dw-apb-gpio-port";
+			gpio-controller;
+			snps,nr-gpios = <32>;
+			reg = <0>;
+			};
 		};
 
 		serial0: serial@1c020000 {
@@ -846,7 +874,19 @@
 			#clock-cells = <1>;
 			clocks = <&spi0clk 0>;
 		};
-	
+
+		spi1: spi@0x1c026000 {
+			status = "disabled";
+			device_type = "spi";
+			compatible = "apm,xgene-spi";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x0 0x1c026000 0x0 0x1000>;
+			bus_num = <1>;
+			#clock-cells = <1>;
+			clocks = <&spi1clk 0>;
+		};
+
 		i2c0: i2c@10512000 {
 			status = "disabled";
 			#address-cells = <1>;

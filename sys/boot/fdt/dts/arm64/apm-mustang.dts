@@ -68,6 +68,11 @@
 
 &spi0 {
 	status = "ok";
+	interrupt-parent = <&gic>;
+	/* What for are 0x0 and 0x4 lines, I have no idea. */
+	interrupts = <0x0 0x4a 0x4>;
+	reg = <0x0 0x1c025000 0x0 0x1000
+	       0x0 0x1f2ac000 0x0 0x100>;
 
 	flash: n25q256a@0 {
 	status = "ok";
@@ -91,11 +96,23 @@
 	};
 };
 
+&spi1 {
+	status = "ok";
+	interrupt-parent = <&gic>;
+	interrupts = <0x0 0x4b 0x4>;
+	reg = <0x0 0x1c026000 0x0 0x1000
+	       0x0 0x1f2ac000 0x0 0x100>;
+};
+
 &i2c0 {
 	status = "ok";
 };
 
 &i2c1 {
+	status = "ok";
+};
+
+&dwgpio {
 	status = "ok";
 };
 

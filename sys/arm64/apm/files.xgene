@@ -16,4 +16,5 @@ arm64/apm/xgene_clk.c           standard
 arm64/apm/xgene_ahci.c          optional        ahci fdt
 arm64/apm/xgene_xhci.c          optional        xhci fdt
 arm64/apm/xgene_i2c.c		optional	i2c fdt
+arm64/apm/xgene_spi.c		optional	spi fdt
 

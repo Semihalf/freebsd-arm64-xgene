@@ -122,6 +122,7 @@ device		tun		# Packet tunnel.
 device		md		# Memory "disks"
 device		gif		# IPv6 and IPv4 tunneling
 device		firmware	# firmware assist module
+device		spibus
 
 # PCIe support
 device		pci             # SoC PCIe support

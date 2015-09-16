@@ -38,11 +38,10 @@
 #include <sys/bio.h>
 #include <sys/kthread.h>
 #include <sys/sysctl.h>
+#include <sys/malloc.h>
 
 #include <geom/geom_disk.h>
 
-#include <dev/ofw/ofw_bus.h>
-#include <dev/ofw/ofw_bus_subr.h>
 #include <dev/spibus/spi.h>
 
 #include <machine/bus.h>
@@ -51,101 +50,23 @@
 #include "spibus_if.h"
 #include "bus_if.h"
 
-/* TYPES */
-#define N25Q_TYPE_256		0x20BA19
-#define N25Q_TYPE_256_DEVSTR	"Micron N25Q256A NOR Flash"
-
-/* COMMANDS */
-#define N25Q_INS_RDID		0x9f
-#define N25Q_INS_RDID_RXLEN	3
-#define N25Q_INS_RDSR		0x05
-#define N25Q_INS_RDSR_RXLEN	1
-#define N25Q_INS_READ		0x3
-#define N25Q_INS_FAST_READ	0xb
-#define N25Q_INS_READ_4		0x13
-#define N25Q_INS_FAST_READ_4	0xc
-
-/* FLAGS */
-#define N25Q_FLAG_FAST_READ	0x1
-
-#define SIZE_128M		0x2000000
-#define N25Q_FAST_DUMMY		8
-
-#define WRITE_FIRST_BYTE(x)	((x) & 0xFF)
-#define WRITE_SECOND_BYTE(x)	(((x) >> 8) & 0xFF)
-#define WRITE_THIRD_BYTE(x)	(((x) >> 16) & 0xFF)
-#define WRITE_FOURTH_BYTE(x)	(((x) >> 24) & 0xFF)
-
-#define MAKE_ID(x,y,z)		(((x) << 16) | ((y) << 8) | (z))
+#include "n25q_var.h"
 
 MALLOC_DECLARE(M_N25Q);
 MALLOC_DEFINE(M_N25Q, "n25q buffers", "buffers for SPI N25Q Flash driver");
 
-typedef struct n25q_softc {
-	device_t		dev;
-	struct bio_queue_head	bioq;
-	struct disk		*disk;
-	struct mtx		mutex;
-	struct intr_config_hook	config_intrhook;
-	struct proc		*p;
-	bool			initialized;
-	struct n25q_flash_data	*flash_data;
-	unsigned int		addr_bytes;
-	uint8_t			*tx_buf;
-	unsigned int		tx_buf_len;
-} n25q_softc_t;
-
-struct n25q_flash_data {
-	uint32_t	id;
-	uint32_t	page_size;
-	uint32_t	page_count;
-	uint32_t	flags;
-};
-
-static struct n25q_flash_data n25q_flash_devices[] = {
-	{N25Q_TYPE_256, 0x100, 0x20000, N25Q_FLAG_FAST_READ}
-};
-
-static struct ofw_compat_data compat_data[] = {
-	{"n25q256a", (uintptr_t)N25Q_TYPE_256_DEVSTR},
-	{NULL, 0}
-};
-
-static int n25q_probe(device_t);
 static int n25q_attach(device_t);
 static int n25q_detach(device_t);
 static void n25q_delayed_attach(void*);
 
-static devclass_t n25q_devclass;
-
 static device_method_t n25q_methods[] = {
-	DEVMETHOD(device_probe, n25q_probe),
 	DEVMETHOD(device_attach, n25q_attach),
 	DEVMETHOD(device_detach, n25q_detach),
 
 	DEVMETHOD_END
 };
 
-static driver_t n25q_driver = {
-	"n25q",
-	n25q_methods,
-	sizeof(struct n25q_softc),
-};
-
-DRIVER_MODULE(n25q, spibus, n25q_driver, n25q_devclass, NULL, NULL);
-
-static int
-n25q_probe(device_t dev)
-{
-	const struct ofw_compat_data *ocd;
-
-	ocd = ofw_bus_search_compatible(dev, compat_data);
-	if (ocd->ocd_str == NULL)
-		return (ENXIO);
-
-	device_set_desc(dev, (const char *)ocd->ocd_data);
-	return (BUS_PROBE_DEFAULT);
-}
+DEFINE_CLASS_0(n25q, n25q_driver, n25q_methods, sizeof(struct n25q_softc));
 
 static int
 n25q_attach(device_t dev)

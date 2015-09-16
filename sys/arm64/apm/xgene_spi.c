@@ -37,9 +37,6 @@
 #include <sys/systm.h>
 #include <sys/sysctl.h>
 
-#include <dev/ofw/ofw_bus.h>
-#include <dev/ofw/ofw_bus_subr.h>
-
 #include <dev/spibus/spi.h>
 #include <dev/spibus/spibusvar.h>
 
@@ -49,155 +46,8 @@
 #include "spibus_if.h"
 #include "bus_if.h"
 
-#define	SPI_DEVSTR		"X-Gene SPI integrated controller"
-#define	SPI_TIMEOUT		(2 * hz)
-#define	SPI_TIMEDWAIT		(10 * hz)
-#define	SPI_CLOCK_BASE		3686400
-#define	MAX_NUMBER_CHIPS	2
+#include "xgene_spi_var.h"
 
-#define	xgene_reg_write(_sc, _off, _val)			\
-	bus_write_4(_sc->mem_res, _off, _val)
-#define	xgene_reg_read(_sc, _off)				\
-	bus_read_4(_sc->mem_res, _off)
-#define	xgene_fifo_write(_sc, _val)				\
-	bus_write_4(_sc->mem_res, SPI_DR, _val);
-#define	xgene_fifo_read(_sc)					\
-	bus_read_4(_sc->mem_res, SPI_DR)
-
-#define	SPI_CTRL0	0x0
-#define	SPI_CTRL1	0x4
-#define	SPI_SSIENR	0x8
-#define	SPI_SER		0x10
-#define	SPI_BAUDR	0x14
-#define	SPI_TXFTLR	0x18
-#define	SPI_RXFTLR	0x1c
-#define	SPI_TXFLR	0x20
-#define	SPI_RXFLR	0x24
-#define	SPI_SR		0x28
-#define	SPI_IMR		0x2c
-#define	SPI_ISR		0x30
-#define	SPI_RISR	0x34
-#define	SPI_DR		0x60
-
-#define	SPI_CTRL0_MASK		0xffff
-#define	SPI_CTRL0_CFS		12
-#define	SPI_CTRL0_CFS_MASK	0xf000
-#define	SPI_CTRL0_CFS_MIN	1
-#define	SPI_CTRL0_CFS_MAX	16
-#define	SPI_CTRL0_SRL		11
-#define	SPI_CTRL0_SRL_MASK	0x800
-#define	SPI_CTRL0_TMOD		8
-#define	SPI_CTRL0_TMOD_MASK	0x300
-#define	SPI_CTRL0_SCPOL		7
-#define	SPI_CTRL0_SCPOL_MASK	0x80
-#define	SPI_CTRL0_SCPH		6
-#define	SPI_CTRL0_SCPH_MASK	0x40
-#define	SPI_CTRL0_DFS		0
-#define	SPI_CTRL0_DFS_MASK	0x15
-#define	SPI_CTRL0_DFS_MIN	4
-#define	SPI_CTRL0_DFS_MAX	16
-#define	SPI_CTRL0_TMOD_EEPROM	3
-
-#define	SPI_CTRL1_NDF_MASK	0xffff
-
-#define	SPI_SIZE_8		0x07
-
-#define	SPI_SSIENR_EN		0
-#define	SPI_SSIENR_EN_MASK	0x01
-
-#define	SPI_SER_SER		0x0
-#define	SPI_SER_SER_MASK	0x07
-#define	SPI_SER_MASK		0x07
-
-#define	SPI_BAUDR_SCKDV		0
-#define	SPI_BAUDR_SCKDV_MASK	0xffff
-
-#define	SPI_TXFTLR_TFT		0
-#define	SPI_TXFTLR_TFT_MASK	0xff
-
-#define	SPI_RXFTLR_RFT		0x0
-#define	SPI_RXFTLR_RFT_MASK	0xff
-
-#define	SPI_RXFLR_MASK		0x1ff
-
-#define	SPI_FIFO_DATA_MASK	0xff
-
-#define	SPI_RX_BUFFER_MASK	0xffff
-
-#define	SPI_SR_MASK		0x7f
-#define	SPI_SR_TFE_MASK		0x04
-#define	SPI_SR_TFNF_MASK	0x02
-#define	SPI_SR_BUSY_MASK	0x01
-#define	SPI_SR_RFNE_MASK	0x08
-#define	SPI_SR_RFF_MASK		0x10
-
-#define	SPI_IMR_MASK		0x3f
-#define	SPI_IMR_TXEIM		0
-#define	SPI_IMR_TXEIM_MASK	0x01
-#define	SPI_IMR_RXFIM		4
-#define	SPI_IMR_RXFIM_MASK	0x10
-#define	SPI_IMR_RXUIM		2
-#define	SPI_IMR_RXUIM_MASK	0x04
-
-#define	SPI_RISR_TXEIR_MASK	0x01
-#define	SPI_RISR_TXOIR_MASK	0x02
-#define	SPI_RISR_RXUIR_MASK	0x04
-#define	SPI_RISR_RXOIR_MASK	0x08
-#define	SPI_RISR_RXFIR_MASK	0x10
-#define	SPI_RISR_MSTIR_MASK	0x20
-
-#define	AHBC_SRST		0x0
-#define	AHBC_CLKEN		0x8
-#define	AHBC_CLK_CONFIG		0x10
-
-#define	AHBC_SRST_MASK		0x3ff
-#define	AHBC_SRST_SPI0		8
-#define	AHBC_SRST_SPI1		7
-#define	AHBC_SRST_SPI_MASK	0x180
-#define	AHBC_CLKEN_SPI0		8
-#define	AHBC_CLKEN_SPI1		7
-#define	AHBC_CLKEN_SPI_MASK	0x180
-#define	AHBC_CLKEN_APB		9
-#define	AHBC_CLKEN_APB_MASK	0x200
-
-/* FLAGS */
-
-#define	SPI_FLAG_BUSY		0x01
-#define	SPI_FLAG_RCV		0x08
-#define	SPI_FLAG_TR		0x10
-#define	SPI_FLAG_EEPROM		0x20
-#define	SPI_FLAG_TR_RCV		0x40
-
-#define	SPI_DEFAULT_SCKDV	450
-
-#if defined(DEBUG)
-#define debugf(dev, str, args...) do { device_printf(dev, str, ##args); } while (0)
-#else
-#define debugf(dev, str, args...) do { } while (0)
-#endif
-
-typedef struct xgene_spi_softc {
-	device_t		dev;
-	struct resource		*mem_res;
-	struct resource 	*irq_res;
-	struct resource		*ahbc_res;
-	int 			mem_rid;
-	int			irq_rid;
-	int			ahbc_rid;
-	struct mtx 		mutex;
-	struct cv		cv_busy;
-	void			*cookie;
-	uint32_t		flags;
-	int			read;
-	int			written;
-	int			tx_done;
-	int			rx_done;
-	struct spi_command	*cmd;
-	void			(*tx)(struct xgene_spi_softc *);
-	void			(*rx)(struct xgene_spi_softc *);
-} xgene_spi_softc_t;
-
-static int xgene_spi_probe(device_t);
 static int xgene_spi_attach(device_t);
 static int xgene_spi_detach(device_t);
 static int xgene_spi_transfer(device_t, device_t, struct spi_command *);
@@ -207,43 +57,18 @@ static void xgene_spi_sysctl_init(xgene_spi_softc_t *);
 static void xgene_spi_intr(void *);
 static uint32_t xgene_ahbc_reg_modify(xgene_spi_softc_t *, bus_size_t,
     uint32_t, uint32_t);
-static phandle_t xgene_spi_get_node(device_t, device_t);
-
-static devclass_t xgene_spi_devclass;
 
 static device_method_t xgene_spi_methods[] = {
-	DEVMETHOD(device_probe,		xgene_spi_probe),
 	DEVMETHOD(device_attach,	xgene_spi_attach),
-	DEVMETHOD(device_detach,	xgene_spi_detach),
-
+	DEVMETHOD(device_detach,	xgene_spi_detach),	
+	
 	DEVMETHOD(spibus_transfer,	xgene_spi_transfer),
-
-	DEVMETHOD(ofw_bus_get_node,	xgene_spi_get_node),
 
 	DEVMETHOD_END
 };
 
-static driver_t xgene_spi_driver = {
-	"spi",
-	xgene_spi_methods,
-	sizeof(xgene_spi_softc_t)
-};
-
-DRIVER_MODULE(xgene_spi, simplebus, xgene_spi_driver, xgene_spi_devclass, 0, 0);
-MODULE_DEPEND(xgene_spi, spibus, 1, 1, 1);
-
-static int
-xgene_spi_probe(device_t dev)
-{
-
-	if (!ofw_bus_status_okay(dev) ||
-	    !ofw_bus_is_compatible(dev, "apm,xgene-spi"))
-		return (ENXIO);
-
-	device_set_desc(dev, SPI_DEVSTR);
-
-	return (BUS_PROBE_DEFAULT);
-}
+DEFINE_CLASS_0(xgene_spi, xgene_spi_driver, xgene_spi_methods,
+    sizeof(struct xgene_spi_softc));
 
 static int
 xgene_spi_attach(device_t dev)
@@ -286,6 +111,7 @@ xgene_spi_attach(device_t dev)
 
 	err = bus_setup_intr(dev, sc->irq_res, INTR_MPSAFE | INTR_TYPE_MISC,
 	    NULL, xgene_spi_intr, sc, &sc->cookie);
+
 	if (err != 0) {
 		device_printf(dev, "Failed to setup interrupt\n");
 		goto fail;
@@ -857,11 +683,4 @@ xgene_spi_sysctl_init(xgene_spi_softc_t *sc)
 	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, "control_frame_size",
 	    CTLFLAG_RW | CTLTYPE_UINT, sc, sizeof(*sc), xgene_spi_cfs_proc,
 	    "IU", "SPI control frame size");
-}
-
-static __inline phandle_t
-xgene_spi_get_node(device_t bus, device_t dev)
-{
-
-	return (ofw_bus_get_node(bus));
 }

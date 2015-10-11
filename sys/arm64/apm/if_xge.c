@@ -1211,27 +1211,32 @@ is_rx_desc(struct xgene_enet_raw_desc *raw_desc)
  * Processes at most nbuf slots if nbuf > 0 or all occupied if nbuf < 0
  */
 static int
-xge_process_ring(struct xgene_enet_desc_ring *ring, int nbuf)
+xge_process_ring(struct xgene_enet_desc_ring *ring)
 {
 	struct xge_softc *sc;
 	struct xgene_enet_raw_desc *raw_desc;
 	uint16_t head;
 	uint16_t slots;
+	size_t nbuf;
 	int count;
 
 	sc = device_get_softc(ring->ndev);
 
 	slots = ring->slots - 1;
+	rmb();
 	/* Head should point to the first occupied descriptor */
 	head = ring->head;
-
-	for (count = 0; nbuf != 0; nbuf--) {
+	/* XXX: Always check all slots */
+	nbuf = ring->slots;
+	for (count = 0; nbuf > 0; nbuf--) {
 		raw_desc = &ring->raw_desc[head];
 		/* Synchronize descriptor */
 		bus_dmamap_sync(ring->dmat, ring->dmap, BUS_DMASYNC_POSTREAD);
 		/* Is this descriptor marked occupied? */
-		if (xgene_enet_is_desc_slot_empty(raw_desc))
-			break;
+		if (xgene_enet_is_desc_slot_empty(raw_desc)) {
+			head = (head + 1) & slots;
+			continue;
+		}
 
 		/*
 		 * Both Rx and Tx-completion messages land in rx_ring.
@@ -1257,7 +1262,9 @@ xge_process_ring(struct xgene_enet_desc_ring *ring, int nbuf)
 		 */
 		RING_CMD_WRITE32(&sc->pdata, ring->cmd, -count);
 		ring->head = head;
+		wmb();
 
+		sc->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 		/*
 		 * TODO: Restart transmission if stopped due to lack
 		 *       of the Tx buffers.
@@ -1280,7 +1287,7 @@ xge_qm_deq_task(void *arg, int pending __unused)
 	tx_ring = sc->pdata.tx_ring;
 	cp_ring = tx_ring->cp_ring;
 	XGE_GLOBAL_LOCK(sc);
-	ret = xge_process_ring(cp_ring, -1);
+	ret = xge_process_ring(cp_ring);
 	if (ret != 0)
 		sc->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 	xge_recycle_tx_locked(sc);
@@ -1455,7 +1462,7 @@ xge_stop_locked(struct xge_softc *sc)
 	/* TODO: Disable interrupts? */
 
 	/* Process ring */
-	xge_process_ring(sc->pdata.rx_ring, -1);
+	xge_process_ring(sc->pdata.rx_ring);
 	sc->tx_enq_num = 0;
 
 	/* Disable Rx and Tx */
@@ -2153,7 +2160,7 @@ xge_watchdog(struct xge_softc *sc)
 		return;
 
 	pdata = &sc->pdata;
-	xge_process_ring(sc->pdata.rx_ring, -1);
+	xge_process_ring(sc->pdata.rx_ring);
 	xge_recycle_tx_locked(sc);
 	if (sc->tx_enq_num == 0)
 		return;

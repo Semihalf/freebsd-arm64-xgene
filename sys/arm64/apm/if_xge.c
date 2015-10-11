@@ -1055,6 +1055,7 @@ xge_create_desc_rings(struct xge_softc *sc)
 	struct xgene_enet_desc_ring *buf_pool;
 	uint16_t ring_id, ring_num;
 	uint8_t cpu_bufnum, eth_bufnum, bp_bufnum;
+	size_t slot;
 	int err = 0;
 
 	cpu_bufnum = pdata->cpu_bufnum;
@@ -1098,6 +1099,9 @@ xge_create_desc_rings(struct xge_softc *sc)
 	buf_pool->rx_buff = malloc((buf_pool->slots * sizeof(struct xge_buff)),
 	    M_XGE, (M_WAITOK | M_ZERO));
 
+	for (slot = 0; slot < buf_pool->slots; slot++)
+		buf_pool->rx_buff[slot].mbuf = NULL;
+
 	buf_pool->dst_ring_num = xge_dst_ring_num(buf_pool);
 
 	/* Allocate Tx descriptor ring (work queue) */
@@ -1127,8 +1131,10 @@ xge_create_desc_rings(struct xge_softc *sc)
 	pdata->tx_ring = tx_ring;
 
 	cp_ring = pdata->rx_ring;
-	cp_ring->cp_buff = malloc((tx_ring->slots * sizeof(struct xge_buff)),
-	    M_XGE, (M_WAITOK | M_ZERO));
+	cp_ring->cp_buff = tx_ring->tx_buff;
+
+	for (slot = 0; slot < cp_ring->slots; slot++)
+		cp_ring->cp_buff[slot].mbuf = NULL;
 
 	pdata->tx_ring->cp_ring = cp_ring;
 	pdata->tx_ring->dst_ring_num = xge_dst_ring_num(cp_ring);

@@ -61,11 +61,9 @@ struct xgene_enet_desc_ring {
 	bus_dma_tag_t buf_dmat;
 	union {
 		struct xge_buff *buff;
+		struct xge_buff *rx_buff;
 		struct xge_buff *tx_buff; /* Used for Tx dmap */
-		struct {
-			struct xge_buff *rx_buff;
-			struct xge_buff *cp_buff;
-		};
+		struct xge_buff *cp_buff;
 	};
 
 	enum xgene_enet_ring_cfgsize cfgsize;

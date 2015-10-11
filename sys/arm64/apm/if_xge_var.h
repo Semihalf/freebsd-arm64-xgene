@@ -117,6 +117,7 @@ struct xge_softc {
 
 	struct buf_ring *	tx_mbufs;	/* Buffers transmitted */
 	uint32_t		tx_enq_num;	/* Buffers num enqueued to Tx */
+	size_t			free_tx_buff;
 };
 
 int xge_attach(device_t);

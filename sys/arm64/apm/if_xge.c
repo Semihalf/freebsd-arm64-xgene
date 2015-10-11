@@ -1116,6 +1116,7 @@ xge_create_desc_rings(struct xge_softc *sc)
 		err = ENOMEM;
 		goto error;
 	}
+	sc->free_tx_buff = tx_ring->slots;
 
 	tx_ring->tx_buff = malloc((tx_ring->slots * sizeof(struct xge_buff)),
 	    M_XGE, (M_WAITOK | M_ZERO));
@@ -1128,6 +1129,7 @@ xge_create_desc_rings(struct xge_softc *sc)
 	}
 
 	tx_ring->tail = 0;
+	tx_ring->head = 0;
 	pdata->tx_ring = tx_ring;
 
 	cp_ring = pdata->rx_ring;
@@ -1512,6 +1514,8 @@ xge_setup_tx_desc(struct xgene_enet_desc_ring *tx_ring, struct mbuf *mb)
 	uint16_t tail;
 	int err;
 
+	/* Find next free */
+	rmb();
 	tail = tx_ring->tail;
 
 	dmat = tx_ring->buf_dmat;
@@ -1538,9 +1542,8 @@ xge_setup_tx_desc(struct xgene_enet_desc_ring *tx_ring, struct mbuf *mb)
 	hopinfo = xge_work_msg(mb);
 	raw_desc->m3 = htole64(SET_VAL(HENQNUM, tx_ring->dst_ring_num) |
 	    hopinfo);
+	bus_dmamap_sync(dmat, dmap, BUS_DMASYNC_PREWRITE);
 	tx_ring->cp_ring->cp_buff[tail].mbuf = mb;
-	tx_ring->cp_ring->cp_buff[tail].dmap = dmap;
-	tx_ring->cp_ring->cp_buff[tail].dmat = dmat;
 	wmb();
 
 #ifdef XGE_DEBUG
@@ -1573,12 +1576,14 @@ xge_encap(struct xge_softc *sc, struct mbuf *mb)
 	cq_level = xge_ring_len(cp_ring);
 
 	if (tx_level > sc->pdata.tx_qcnt_hi ||
-	    cq_level > sc->pdata.cp_qcnt_hi)
+	    cq_level > sc->pdata.cp_qcnt_hi ||
+	    sc->free_tx_buff == 0) {
+		xge_process_ring(sc->pdata.rx_ring);
+		xge_recycle_tx_locked(sc);
 		return (ENOBUFS);
+	}
 
 	xge_setup_tx_desc(tx_ring, mb);
-
-	RING_CMD_WRITE32(&sc->pdata, tx_ring->cmd, 1);
 
 #ifdef XGE_DEBUG
 	struct xgene_enet_raw_desc *raw_desc;
@@ -1596,7 +1601,11 @@ xge_encap(struct xge_softc *sc, struct mbuf *mb)
 #endif
 
 	tx_ring->tail = (tx_ring->tail + 1) & (tx_ring->slots - 1);
+	sc->free_tx_buff--;
 	sc->tx_enq_num++;
+	wmb();
+
+	RING_CMD_WRITE32(&sc->pdata, tx_ring->cmd, 1);
 
 	return (0);
 }
@@ -1618,12 +1627,12 @@ xge_txstart_locked(struct xge_softc *sc)
 	    (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) != IFF_DRV_RUNNING)
 		return;
 
-	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
+	for (;;) {
 		/*
 		 * Dequeue packets to the driver managed queue and
 		 * return first mbuf here.
 		 */
-		IFQ_DRV_DEQUEUE(&ifp->if_snd, m0);
+		IF_DEQUEUE(&ifp->if_snd, m0);
 		if (m0 == NULL)
 			break;
 
@@ -1632,13 +1641,18 @@ xge_txstart_locked(struct xge_softc *sc)
 			/* TODO: Use offloading features here */
 		}
 
-		mtmp = m_defrag(m0, M_NOWAIT);
-		if (mtmp != NULL)
+		if (m0->m_next != NULL) {
+			mtmp = m_defrag(m0, M_NOWAIT);
+			if (mtmp == NULL) {
+				m_freem(m0);
+				if_inc_counter(ifp, IFCOUNTER_OQDROPS, 1);
+				continue;
+			}
 			m0 = mtmp;
+		}
 
 		if (xge_encap(sc, m0) != 0) {
-			IFQ_DRV_PREPEND(&ifp->if_snd, m0);
-			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			IF_PREPEND(&ifp->if_snd, m0);
 			break;
 		}
 
@@ -1663,7 +1677,7 @@ xge_recycle_tx_locked(struct xge_softc *sc)
 
 	mb = buf_ring_dequeue_sc(sc->tx_mbufs);
 	while (mb != NULL) {
-		m_free(mb);
+		m_freem(mb);
 		sc->tx_enq_num--;
 		/*
 		 * If everything is transmitted then disable watchdog and break.
@@ -1711,11 +1725,14 @@ xge_tx_completion(struct xgene_enet_desc_ring *cp_ring,
 		 * Cannot postpone this action for later. Free the mbuf now.
 		 * Disable watchdog if everything is transmitted.
 		 */
-		m_free(mb);
+		m_freem(mb);
+		cp_ring->cp_buff[desc_idx].mbuf = NULL;
 		sc->tx_enq_num--;
 		if (sc->tx_enq_num == 0)
 			sc->wd_timeout = 0;
 	}
+	sc->free_tx_buff++;
+	wmb();
 
 	status = GET_VAL(LERR, le64toh(raw_desc->m0));
 	if (status >= XGE_MSG_LERR_FIRST) {

@@ -1453,21 +1453,21 @@ xge_stop_locked(struct xge_softc *sc)
 
 	/* Stop tick engine */
 	callout_stop(&sc->timer_callout);
-	/* Clean watchdog */
-	sc->wd_timeout = 0;
-
+	/* Disable Rx and Tx */
+	mac_ops->tx_disable(pdata);
+	mac_ops->rx_disable(pdata);
 	/* Disable interface */
 	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
+	/* Clean watchdog */
+	sc->wd_timeout = 0;
 
 	/* TODO: Disable interrupts? */
 
 	/* Process ring */
 	xge_process_ring(sc->pdata.rx_ring);
+	xge_recycle_tx_locked(sc);
 	sc->tx_enq_num = 0;
 
-	/* Disable Rx and Tx */
-	mac_ops->tx_disable(pdata);
-	mac_ops->rx_disable(pdata);
 }
 
 /*****************************************************************************

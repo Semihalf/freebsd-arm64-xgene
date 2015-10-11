@@ -106,6 +106,9 @@ struct xge_softc {
 	struct resource *	qm_deq_irq;
 	void *			qm_deq_irq_ihl;
 
+	struct task		qm_deq_task;
+	struct taskqueue *	qm_deq_taskq;
+
 	bus_space_tag_t		ethclk_bst;	/* RGMII */
 	bus_space_handle_t	ethclk_bsh;	/* RGMII */
 	bus_size_t		ethclk_bsz;	/* RGMII */

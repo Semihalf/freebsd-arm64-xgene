@@ -148,7 +148,7 @@ static void xge_xgmac_media_status(struct ifnet *, struct ifmediareq *);
 
 static void xge_mac_get_hwaddr(struct xge_softc *);
 static void xge_delete_desc_rings(struct xge_softc *);
-static void xge_qm_deq_intr(void *);
+static int xge_qm_deq_intr(void *);
 static void xge_init(void *);
 static int xge_ioctl(struct ifnet *, u_long, caddr_t);
 static void xge_txstart(struct ifnet *);
@@ -166,6 +166,8 @@ static void xge_tick(void *);
 static int xge_init_hw(struct xge_softc *);
 static int xge_setup_ops(struct xge_softc *);
 static void xge_map_dma_addr(void *, bus_dma_segment_t *, int, int);
+
+static void xge_qm_deq_task(void *, int);
 
 static int xge_shutdown(device_t);
 
@@ -277,8 +279,8 @@ xge_attach(device_t dev)
 	}
 
 	/* Setup interrupts */
-	err = bus_setup_intr(dev, sc->qm_deq_irq, INTR_TYPE_NET, NULL,
-	    xge_qm_deq_intr, sc, &sc->qm_deq_irq_ihl);
+	err = bus_setup_intr(dev, sc->qm_deq_irq, INTR_TYPE_NET, xge_qm_deq_intr,
+	    NULL, sc, &sc->qm_deq_irq_ihl);
 	if (err != 0) {
 		device_printf(dev,
 		    "Cannot set-up QM dequeue interrupt\n");
@@ -455,6 +457,13 @@ xge_attach(device_t dev)
 
 		ifmedia_set(&sc->ifmedia, (IFM_ETHER | IFM_10G_SR | IFM_FDX));
 	}
+
+	/* Allocate taskqueues */
+	TASK_INIT(&sc->qm_deq_task, 0, xge_qm_deq_task, sc);
+	sc->qm_deq_taskq = taskqueue_create_fast("qm_deq_taskq", M_WAITOK,
+	    taskqueue_thread_enqueue, &sc->qm_deq_taskq);
+	taskqueue_start_threads(&sc->qm_deq_taskq, 1, PI_NET, "%s qm_deq",
+	    device_get_nameunit(dev));
 
 	ether_ifattach(ifp, sc->hwaddr);
 
@@ -1243,27 +1252,37 @@ xge_process_ring(struct xgene_enet_desc_ring *ring, int nbuf)
 }
 
 static void
-xge_qm_deq_intr_locked(struct xge_softc *sc, int count)
+xge_qm_deq_task(void *arg, int pending __unused)
 {
-	struct xgene_enet_pdata *pdata = &sc->pdata;
+	struct xge_softc *sc;
+	struct xgene_enet_desc_ring *tx_ring;
+	struct xgene_enet_desc_ring *cp_ring;
+	int ret;
 
-	XGE_GLOBAL_LOCK_ASSERT(sc);
+	sc = (struct xge_softc *)arg;
 
-	xge_process_ring(pdata->rx_ring, count);
+	tx_ring = sc->pdata.tx_ring;
+	cp_ring = tx_ring->cp_ring;
+	XGE_GLOBAL_LOCK(sc);
+	ret = xge_process_ring(cp_ring, -1);
+	if (ret != 0)
+		sc->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+	xge_recycle_tx_locked(sc);
+	XGE_GLOBAL_UNLOCK(sc);
+	xge_do_rx(sc);
+
+	bus_unmask_intr(sc->dev, sc->qm_deq_irq);
 }
 
-static void
+static int
 xge_qm_deq_intr(void *arg)
 {
 	struct xge_softc *sc = arg;
 
-	XGE_GLOBAL_LOCK(sc);
-	xge_qm_deq_intr_locked(sc, -1);
-	/* Recycle Tx-ed mbufs */
-	if (buf_ring_count(sc->tx_mbufs) > XGE_TX_DONE_TH)
-		xge_recycle_tx_locked(sc);
-	XGE_GLOBAL_UNLOCK(sc);
-	xge_do_rx(sc);
+	taskqueue_enqueue(sc->qm_deq_taskq, &sc->qm_deq_task);
+	bus_mask_intr(sc->dev, sc->qm_deq_irq);
+
+	return (FILTER_HANDLED);
 }
 
 /*****************************************************************************

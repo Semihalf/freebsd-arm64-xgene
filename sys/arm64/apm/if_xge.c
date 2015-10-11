@@ -742,6 +742,37 @@ xge_ring_len(struct xgene_enet_desc_ring *ring)
 	return (num_msgs >> NUMMSGSINQ_POS);
 }
 
+static uint32_t __unused
+xge_ring_head(struct xgene_enet_desc_ring *ring)
+{
+	struct xge_softc *sc;
+	uint32_t ring_state, head_ptr;
+
+	sc = device_get_softc(ring->ndev);
+
+	ring_state = RING_CMD_READ32(&sc->pdata, ring->cmd_base +
+	    sizeof(uint32_t));
+	head_ptr = ring_state & CREATE_MASK(HEADPTR_POS, HEADPTR_LEN);
+
+	return (head_ptr >> HEADPTR_POS);
+}
+
+static uint32_t __unused
+xge_ring_tail(struct xgene_enet_desc_ring *ring)
+{
+	struct xge_softc *sc;
+	uint32_t num_msg, head_ptr;
+	uint32_t slots;
+
+	sc = device_get_softc(ring->ndev);
+
+	slots = ring->slots - 1;
+	num_msg = xge_ring_len(ring);
+	head_ptr = xge_ring_head(ring);
+
+	return ((head_ptr + num_msg) & slots);
+}
+
 static struct xgene_enet_desc_ring *
 xge_create_ring(struct xge_softc *sc, uint32_t ring_num, enum
     xgene_enet_ring_cfgsize cfgsize, uint32_t ring_id)

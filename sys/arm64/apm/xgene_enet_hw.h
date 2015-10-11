@@ -97,6 +97,8 @@ enum xgene_enet_rm {
 #define RECOMTIMEOUTH_LEN	2
 #define NUMMSGSINQ_POS		1
 #define NUMMSGSINQ_LEN		16
+#define	HEADPTR_POS		17
+#define	HEADPTR_LEN		15
 #define ACCEPTLERR		BIT(19)
 #define QCOHERENT		BIT(4)
 #define RECOMBBUF		BIT(27)

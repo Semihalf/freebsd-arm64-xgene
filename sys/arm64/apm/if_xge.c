@@ -869,6 +869,7 @@ xge_create_dmaps(struct xgene_enet_desc_ring *ring, uint32_t nbuf)
 	}
 
 	for (i = 0; i < nbuf; i++) {
+		ring->buff[i].dmat = ring->buf_dmat;
 		err = bus_dmamap_create(ring->buf_dmat, 0,
 		    &ring->buff[i].dmap);
 		if (err != 0) {
@@ -937,8 +938,6 @@ xge_init_bufpool(struct xgene_enet_desc_ring *buf_pool)
 		    SET_VAL(STASH, 3));
 	}
 
-	buf_pool->tail = 0;
-
 	return (0);
 }
 
@@ -978,7 +977,7 @@ xge_new_rxbuf(bus_dma_tag_t tag, bus_dmamap_t map, struct mbuf **mbufp,
 }
 
 static int
-xge_refill_bufpool_locked(struct xgene_enet_desc_ring *buf_pool, uint32_t nbuf)
+xge_refill_bufpool_locked(struct xgene_enet_desc_ring *buf_pool, int nbuf)
 {
 	struct xge_softc *sc;
 	struct xgene_enet_raw_desc16 *raw_desc;
@@ -994,9 +993,19 @@ xge_refill_bufpool_locked(struct xgene_enet_desc_ring *buf_pool, uint32_t nbuf)
 	sc = device_get_softc(buf_pool->ndev);
 
 	XGE_GLOBAL_LOCK_ASSERT(sc);
+	/*
+	 * XXX: Due to hardware constraints we don't allow partiall buffer
+	 *      refill. This is caused by the fact that hardware does not
+	 *      complete fetched FP buffers in order and cannot update HEAD and
+	 *      TAIL pointers of the ring correctly if we add less than 5
+	 *      buffers at a time.
+	 */
+	if (__predict_false(nbuf != NUM_PKT_BUF))
+		panic("%s: nbufs != NUM_PKT_BUF", __func__);
 
-	tail = buf_pool->tail;
+	tail = 0;
 	slots = buf_pool->slots - 1;
+	i = buf_pool->slots;
 
 	/*
 	 * XXX: Revise that since XGENE_ENET_MAX_MTU == 1536
@@ -1028,7 +1037,6 @@ xge_refill_bufpool_locked(struct xgene_enet_desc_ring *buf_pool, uint32_t nbuf)
 	wmb();
 
 	RING_CMD_WRITE32(&sc->pdata, buf_pool->cmd, nbuf);
-	buf_pool->tail = tail;
 
 	return (0);
 }
@@ -1093,7 +1101,7 @@ xge_create_desc_rings(struct xge_softc *sc)
 		goto error;
 	}
 
-	rx_ring->nbufpool = NUM_BUFPOOL;
+	rx_ring->nbufpool = NUM_PKT_BUF;
 	rx_ring->buf_pool = buf_pool;
 
 	buf_pool->rx_buff = malloc((buf_pool->slots * sizeof(struct xge_buff)),
@@ -1761,7 +1769,9 @@ xge_do_rx(struct xge_softc *sc)
 
 	ifp = sc->ifp;
 
-	mb = buf_ring_dequeue_mc(sc->rx_mbufs);
+	XGE_GLOBAL_LOCK(sc);
+	mb = buf_ring_dequeue_sc(sc->rx_mbufs);
+	XGE_GLOBAL_UNLOCK(sc);
 	while (mb != NULL) {
 		mb->m_pkthdr.rcvif = ifp;
 
@@ -1769,7 +1779,9 @@ xge_do_rx(struct xge_softc *sc)
 		m_adj(mb, -ETHER_CRC_LEN);
 
 		(*ifp->if_input)(ifp, mb);
-		mb = buf_ring_dequeue_mc(sc->rx_mbufs);
+		XGE_GLOBAL_LOCK(sc);
+		mb = buf_ring_dequeue_sc(sc->rx_mbufs);
+		XGE_GLOBAL_UNLOCK(sc);
 	}
 }
 
@@ -1805,21 +1817,11 @@ xge_rx_completion(struct xgene_enet_desc_ring *rx_ring,
 
 	/* Set the proper amount of data in this mbuf */
 	mb->m_len = GET_VAL(BUFDATALEN, le64toh(raw_desc->m1));
-	/*
-	 * Enqueue received mbuf to the
-	 * software completion queue for further processing.
-	 */
-	if (__predict_false(buf_ring_enqueue(sc->rx_mbufs, mb) != 0)) {
-		/*
-		 * Not enough Rx slots in software ring.
-		 * Discard this packet.
-		 */
-		if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
-		goto out;
-	}
+	mb->m_pkthdr.rcvif = ifp;
 
 	status = GET_VAL(LERR, le64toh(raw_desc->m0));
 	if (status >= XGE_MSG_LERR_FIRST) {
+		m_freem(mb);
 		/*
 		 * TODO: Parse errors properly.
 		 *       For now just increase packet counters.
@@ -1831,12 +1833,36 @@ xge_rx_completion(struct xgene_enet_desc_ring *rx_ring,
 		goto out;
 	}
 
+	/*
+	 * Enqueue received mbuf to the
+	 * software completion queue for further processing.
+	 */
+	if (__predict_false(buf_ring_enqueue(sc->rx_mbufs, mb) != 0)) {
+		m_freem(mb);
+		/*
+		 * Not enough Rx slots in software ring.
+		 * Discard this packet.
+		 */
+		if_inc_counter(ifp, IFCOUNTER_IQDROPS, 1);
+		goto out;
+	}
+
 	if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
 
 out:
+	buf_pool->rx_buff[desc_idx].mbuf = NULL;
 	if (--rx_ring->nbufpool == 0) {
-		xge_refill_bufpool_locked(buf_pool, NUM_BUFPOOL);
-		rx_ring->nbufpool = NUM_BUFPOOL;
+		if (__predict_false(xge_refill_bufpool_locked(buf_pool,
+		    NUM_PKT_BUF) != 0)) {
+			/*
+			 * XXX: We can't recover from that at the moment since
+			 *      HW does not maintain the correct pointers to
+			 *      HEAD and TAIL if we write less than 5 buffers
+			 *      at a time to FP.
+			 */
+			panic("%s: failed to refill bufpool", __func__);
+		}
+		rx_ring->nbufpool = NUM_PKT_BUF;
 	}
 }
 
